@@ -1,0 +1,6 @@
+{
+  "name": "OratoriaPro — Cronómetro y Atril de Ensayos",
+  "description": "Cronómetro de cuenta regresiva para oratoria con alertas sonoras, grabador de voz integrado para autoevaluación y modo atril profesional.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
