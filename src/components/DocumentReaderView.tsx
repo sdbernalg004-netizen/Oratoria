@@ -1,19 +1,20 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SourceDocument, SpeechSection } from '../types';
 import {
   Upload,
   BookOpen,
   ChevronLeft,
   ChevronRight,
-  Type,
-  Sun,
-  Moon,
   FileText,
   Plus,
   Trash2,
-  Sparkles,
-  ExternalLink,
   CheckCircle,
+  Edit3,
+  Check,
+  X,
+  ScrollText,
+  Layers,
+  FileSearch,
 } from 'lucide-react';
 
 interface ExtractedPDFData {
@@ -31,8 +32,31 @@ interface DocumentReaderViewProps {
   onAddDocument: (doc: SourceDocument) => void;
   onUpdateDocument: (doc: SourceDocument) => void;
   onDeleteDocument: (id: string) => void;
-  onPDFExtracted?: (extracted: ExtractedPDFData, pdfUrl?: string) => void;
+  onUploadFile?: (file: File) => void;
+  isProcessingFile?: boolean;
   onGoToSplitView?: () => void;
+  onPDFExtracted?: (extracted: ExtractedPDFData, pdfUrl?: string) => void;
+}
+
+// Utility to split raw text into clean verbatim pages without altering or summarizing any words
+function splitTextIntoVerbatimPages(rawText: string, maxCharsPerPage: number = 900): string[] {
+  if (!rawText || !rawText.trim()) return [''];
+  const paragraphs = rawText.split('\n\n');
+  const pages: string[] = [];
+  let currentPage = '';
+
+  for (const para of paragraphs) {
+    if ((currentPage + '\n\n' + para).length > maxCharsPerPage && currentPage.trim().length > 0) {
+      pages.push(currentPage.trim());
+      currentPage = para;
+    } else {
+      currentPage = currentPage ? `${currentPage}\n\n${para}` : para;
+    }
+  }
+  if (currentPage.trim().length > 0) {
+    pages.push(currentPage.trim());
+  }
+  return pages.length > 0 ? pages : [rawText];
 }
 
 export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
@@ -42,18 +66,37 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
   onAddDocument,
   onUpdateDocument,
   onDeleteDocument,
-  onPDFExtracted,
+  onUploadFile,
+  isProcessingFile = false,
   onGoToSplitView,
+  onPDFExtracted,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [localProcessing, setLocalProcessing] = useState(false);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocContent, setNewDocContent] = useState('');
 
+  // Reader mode: 'continuous' (all text in smooth scroll) vs 'paginated' (by screens)
+  const [readingMode, setReadingMode] = useState<'continuous' | 'paginated'>('continuous');
+
+  // For PDF: toggle between 'text' (dark verbatim reader) and 'pdf-embed' (original PDF viewer)
+  const [pdfDisplayMode, setPdfDisplayMode] = useState<'text' | 'pdf-embed'>('text');
+
+  // In-place direct text editor mode so the user can keep 100% control of their outline
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [editedTextContent, setEditedTextContent] = useState('');
+
   const currentDoc =
     documents.find((d) => d.id === currentDocId) || documents[0];
+
+  useEffect(() => {
+    if (currentDoc) {
+      setEditedTextContent(currentDoc.content || '');
+      setIsEditingText(false);
+    }
+  }, [currentDoc?.id]);
 
   // Theme palettes - Dark is the default
   const themes = {
@@ -93,20 +136,42 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
 
   const currentTheme = themes[currentDoc?.theme || 'dark'];
 
-  // Handle uploading files (PDF or text/markdown)
+  // Handle saving direct text edits
+  const handleSaveDirectEdit = () => {
+    if (!currentDoc) return;
+    const verbatimPages = splitTextIntoVerbatimPages(editedTextContent);
+    const updated: SourceDocument = {
+      ...currentDoc,
+      content: editedTextContent,
+      pages: verbatimPages,
+      currentPage: 1,
+      totalPages: Math.max(1, verbatimPages.length),
+    };
+    onUpdateDocument(updated);
+    setIsEditingText(false);
+    setSuccessBanner('¡Texto del bosquejo actualizado exactamente como lo escribiste!');
+  };
+
+  // Handle uploading files (PDF or text/markdown/Word)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (onUploadFile) {
+      onUploadFile(file);
+      e.target.value = '';
+      return;
+    }
+
     const fileName = file.name.replace(/\.[^/.]+$/, '');
-    setIsProcessingFile(true);
+    setLocalProcessing(true);
     setSuccessBanner(null);
 
     try {
       if (file.type === 'application/pdf') {
         const pdfUrl = URL.createObjectURL(file);
 
-        // Convert to base64 to extract sections with Gemini
+        // Convert to base64
         const reader = new FileReader();
         const base64Promise = new Promise<string>((resolve, reject) => {
           reader.onload = () => {
@@ -120,7 +185,7 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
 
         const pdfBase64 = await base64Promise;
 
-        // Call backend Gemini endpoint to parse PDF into sections
+        // Call backend Gemini endpoint
         const res = await fetch('/api/extract-pdf-sections', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -140,91 +205,61 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
           extractedData = resData.data;
         }
 
+        const verbatimPages = splitTextIntoVerbatimPages(extractedData.fullText || '');
+
         const newDoc: SourceDocument = {
           id: `doc_pdf_${Date.now()}`,
           title: extractedData.title || fileName,
           type: 'pdf',
           content: extractedData.fullText || '',
           pdfUrl,
-          pages: extractedData.pages && extractedData.pages.length > 0 ? extractedData.pages : undefined,
+          pages: verbatimPages,
           currentPage: 1,
-          totalPages: extractedData.pages && extractedData.pages.length > 0 ? extractedData.pages.length : 1,
-          theme: 'dark', // default dark background
+          totalPages: Math.max(1, verbatimPages.length),
+          theme: 'dark',
           fontSize: 20,
           lineHeight: 1.6,
         };
 
         onAddDocument(newDoc);
 
-        // Notify parent to reload all speech sections and update Atril Dividido
         if (onPDFExtracted) {
           onPDFExtracted(extractedData, pdfUrl);
         }
 
-        setSuccessBanner(`¡PDF cargado exitosamente! Se recargaron las secciones del discurso en el Atril Dividido.`);
+        setSuccessBanner(`¡PDF cargado con texto íntegro! Se preservaron todas las palabras e ideas originales.`);
       } else {
         // Text / markdown file
         const textReader = new FileReader();
         textReader.onload = (event) => {
           const text = (event.target?.result as string) || '';
-          const paragraphs = text.split('\n\n').filter(Boolean);
-          const pages: string[] = [];
-          let cur = '';
-
-          paragraphs.forEach((p) => {
-            if (cur.length + p.length > 900) {
-              pages.push(cur);
-              cur = p + '\n\n';
-            } else {
-              cur += p + '\n\n';
-            }
-          });
-          if (cur.trim()) pages.push(cur);
-
-          // Build sections from paragraphs
-          const sections: SpeechSection[] = paragraphs.slice(0, 5).map((para, i) => ({
-            id: `sec-${i + 1}`,
-            title: i === 0 ? '1. Introducción y Apertura' : i === paragraphs.length - 1 ? `${i + 1}. Conclusión y Cierre` : `Punto ${i + 1}`,
-            estimatedMinutes: 1.5,
-            notes: para.slice(0, 300),
-          }));
-
-          const extractedData: ExtractedPDFData = {
-            title: fileName,
-            fullText: text,
-            pages,
-            sections,
-            suggestedTargetSeconds: Math.max(120, Math.round((text.split(/\s+/).length / 135) * 60)),
-          };
+          const verbatimPages = splitTextIntoVerbatimPages(text);
 
           const newDoc: SourceDocument = {
             id: `doc_text_${Date.now()}`,
             title: fileName,
             type: 'text',
             content: text,
-            pages: pages.length > 0 ? pages : [text],
+            pages: verbatimPages,
             currentPage: 1,
-            totalPages: Math.max(1, pages.length),
+            totalPages: Math.max(1, verbatimPages.length),
             theme: 'dark',
             fontSize: 22,
             lineHeight: 1.7,
           };
 
           onAddDocument(newDoc);
-
-          if (onPDFExtracted) {
-            onPDFExtracted(extractedData);
-          }
-
-          setSuccessBanner(`¡Archivo cargado! Se han actualizado las secciones del discurso en el Atril Dividido.`);
+          setSuccessBanner(`¡Bosquejo cargado con texto íntegro!`);
         };
         textReader.readAsText(file);
       }
     } catch (err: any) {
-      console.error('Error handling file upload:', err);
+      console.error('Error uploading file in reader:', err);
     } finally {
-      setIsProcessingFile(false);
-      e.target.value = '';
+      setLocalProcessing(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -250,23 +285,12 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
     e.preventDefault();
     if (!newDocTitle.trim() || !newDocContent.trim()) return;
 
+    const verbatimPages = splitTextIntoVerbatimPages(newDocContent);
+
     const paragraphs = newDocContent.split('\n\n').filter(Boolean);
-    const pages: string[] = [];
-    let cur = '';
-
-    paragraphs.forEach((p) => {
-      if (cur.length + p.length > 900) {
-        pages.push(cur);
-        cur = p + '\n\n';
-      } else {
-        cur += p + '\n\n';
-      }
-    });
-    if (cur.trim()) pages.push(cur);
-
     const sections: SpeechSection[] = paragraphs.slice(0, 5).map((para, i) => ({
       id: `sec-${i + 1}`,
-      title: i === 0 ? '1. Introducción y Apertura' : i === paragraphs.length - 1 ? `${i + 1}. Conclusión y Cierre` : `Punto ${i + 1}`,
+      title: i === 0 ? '1. Introducción' : i === paragraphs.length - 1 ? `${i + 1}. Conclusión` : `Punto ${i + 1}`,
       estimatedMinutes: 1.5,
       notes: para.slice(0, 300),
     }));
@@ -274,7 +298,7 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
     const extractedData: ExtractedPDFData = {
       title: newDocTitle.trim(),
       fullText: newDocContent,
-      pages,
+      pages: verbatimPages,
       sections,
       suggestedTargetSeconds: Math.max(120, Math.round((newDocContent.split(/\s+/).length / 135) * 60)),
     };
@@ -284,9 +308,9 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
       title: newDocTitle.trim(),
       type: 'outline',
       content: newDocContent,
-      pages: pages.length > 0 ? pages : [newDocContent],
+      pages: verbatimPages,
       currentPage: 1,
-      totalPages: Math.max(1, pages.length),
+      totalPages: Math.max(1, verbatimPages.length),
       theme: 'dark',
       fontSize: 22,
       lineHeight: 1.7,
@@ -300,7 +324,7 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
     setNewDocTitle('');
     setNewDocContent('');
     setShowUploadModal(false);
-    setSuccessBanner('¡Bosquejo creado! Se han sincronizado las secciones y el texto en el Atril Dividido.');
+    setSuccessBanner('¡Bosquejo creado con texto íntegro sin alteraciones!');
   };
 
   // Get current page content
@@ -309,6 +333,8 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
     currentDoc?.pages && currentDoc.pages[pageIndex]
       ? currentDoc.pages[pageIndex]
       : currentDoc?.content || '';
+
+  const isPdf = currentDoc?.type === 'pdf';
 
   return (
     <div
@@ -321,7 +347,7 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
     >
       {/* Top Document Bar */}
       <div
-        className="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 border-b text-xs select-none"
+        className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-2.5 border-b text-xs select-none"
         style={{
           backgroundColor: currentTheme.headerBg,
           borderColor: currentTheme.border,
@@ -329,12 +355,12 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
         }}
       >
         {/* Document Selector & Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <BookOpen className="w-4 h-4 text-blue-500 shrink-0" />
           <select
             value={currentDoc?.id}
             onChange={(e) => onSelectDocument(e.target.value)}
-            className="font-semibold bg-transparent text-sm cursor-pointer focus:outline-none max-w-[240px] sm:max-w-[320px] truncate"
+            className="font-semibold bg-transparent text-sm cursor-pointer focus:outline-none max-w-[200px] sm:max-w-[280px] truncate"
             style={{ color: currentTheme.text }}
           >
             {documents.map((d) => (
@@ -343,13 +369,102 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
               </option>
             ))}
           </select>
-          <span className="hidden sm:inline text-[11px] opacity-75">
-            - Guardado
+          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
+            Texto Íntegro
           </span>
         </div>
 
-        {/* Center / Right controls: Font, Theme, Upload */}
-        <div className="flex items-center gap-3">
+        {/* Center / Right controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Mode Switcher: Continuous vs Paginated */}
+          <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/10 text-[11px]">
+            <button
+              onClick={() => setReadingMode('continuous')}
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                readingMode === 'continuous'
+                  ? 'bg-blue-600 text-white font-medium'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Ver todo el bosquejo en desplazamiento continuo"
+            >
+              <ScrollText className="w-3 h-3" />
+              <span className="hidden sm:inline">Continuo</span>
+            </button>
+            <button
+              onClick={() => setReadingMode('paginated')}
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                readingMode === 'paginated'
+                  ? 'bg-blue-600 text-white font-medium'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Ver por pantallas paginadas"
+            >
+              <Layers className="w-3 h-3" />
+              <span className="hidden sm:inline">Paginado</span>
+            </button>
+          </div>
+
+          {/* If PDF, option to view original PDF document or text */}
+          {isPdf && currentDoc.pdfUrl && (
+            <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/10 text-[11px]">
+              <button
+                onClick={() => setPdfDisplayMode('text')}
+                className={`px-2 py-1 rounded transition-colors ${
+                  pdfDisplayMode === 'text'
+                    ? 'bg-neutral-800 text-white font-medium'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+                title="Lectura en modo texto oscuro"
+              >
+                Texto
+              </button>
+              <button
+                onClick={() => setPdfDisplayMode('pdf-embed')}
+                className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                  pdfDisplayMode === 'pdf-embed'
+                    ? 'bg-neutral-800 text-white font-medium'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+                title="Visor PDF original con formato exacto"
+              >
+                <FileSearch className="w-3 h-3" />
+                <span>PDF Original</span>
+              </button>
+            </div>
+          )}
+
+          {/* Edit Outline Text Button */}
+          {!isEditingText ? (
+            <button
+              onClick={() => {
+                setEditedTextContent(currentDoc?.content || '');
+                setIsEditingText(true);
+              }}
+              className="flex items-center gap-1 px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-lg text-xs font-medium border border-neutral-700 transition-colors"
+              title="Editar o ajustar el texto directamente tal cual lo necesitas"
+            >
+              <Edit3 className="w-3 h-3 text-blue-400" />
+              <span className="hidden sm:inline">Editar Bosquejo</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleSaveDirectEdit}
+                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+              >
+                <Check className="w-3 h-3" />
+                <span>Guardar</span>
+              </button>
+              <button
+                onClick={() => setIsEditingText(false)}
+                className="p-1 text-neutral-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                title="Cancelar edición"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Font Size Adjuster */}
           <div className="flex items-center gap-1 bg-white/5 rounded-lg px-2 py-1">
             <button
@@ -383,17 +498,17 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
             </button>
           </div>
 
-          {/* Theme Switcher Pills (Dark is primary) */}
-          <div className="flex items-center gap-1 bg-white/5 rounded-lg p-1">
+          {/* Theme Palette Dots */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-white/5 rounded-lg p-1">
             <button
               onClick={() =>
                 currentDoc && onUpdateDocument({ ...currentDoc, theme: 'dark' })
               }
               className={`w-5 h-5 rounded-md border ${
-                currentDoc?.theme === 'dark' || !currentDoc?.theme ? 'ring-2 ring-blue-500' : ''
+                currentDoc?.theme === 'dark' ? 'ring-2 ring-blue-500' : ''
               }`}
-              style={{ backgroundColor: '#0c0c0e' }}
-              title="Fondo Oscuro (Recomendado)"
+              style={{ backgroundColor: '#0c0c0e', borderColor: '#27272a' }}
+              title="Fondo Oscuro Profesional"
             />
             <button
               onClick={() =>
@@ -402,8 +517,8 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
               className={`w-5 h-5 rounded-md border ${
                 currentDoc?.theme === 'warm-cream' ? 'ring-2 ring-blue-500' : ''
               }`}
-              style={{ backgroundColor: '#FBF6EE' }}
-              title="Fondo Cálido / Papiro"
+              style={{ backgroundColor: '#FBF6EE', borderColor: '#e2d9cc' }}
+              title="Crema Cálido"
             />
             <button
               onClick={() =>
@@ -412,8 +527,8 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
               className={`w-5 h-5 rounded-md border ${
                 currentDoc?.theme === 'sepia' ? 'ring-2 ring-blue-500' : ''
               }`}
-              style={{ backgroundColor: '#F4ECD8' }}
-              title="Fondo Sepia"
+              style={{ backgroundColor: '#f4ecd8', borderColor: '#ded5be' }}
+              title="Sepia"
             />
             <button
               onClick={() =>
@@ -422,7 +537,7 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
               className={`w-5 h-5 rounded-md border ${
                 currentDoc?.theme === 'white' ? 'ring-2 ring-blue-500' : ''
               }`}
-              style={{ backgroundColor: '#FFFFFF' }}
+              style={{ backgroundColor: '#FFFFFF', borderColor: '#e2e8f0' }}
               title="Fondo Blanco"
             />
           </div>
@@ -430,25 +545,25 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
           {/* Upload Button */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={isProcessingFile}
+            disabled={isProcessingFile || localProcessing}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors shadow-sm disabled:opacity-50"
           >
-            {isProcessingFile ? (
+            {isProcessingFile || localProcessing ? (
               <>
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Extrayendo Secciones...</span>
+                <span>Cargando...</span>
               </>
             ) : (
               <>
                 <Upload className="w-3.5 h-3.5" />
-                <span>Subir PDF / Bosquejo</span>
+                <span>Subir Archivo</span>
               </>
             )}
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.txt,.md"
+            accept=".pdf,.docx,.doc,.txt,.md"
             onChange={handleFileUpload}
             className="hidden"
           />
@@ -456,56 +571,65 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
           <button
             onClick={() => setShowUploadModal(true)}
             className="p-1.5 rounded-lg hover:bg-white/10 opacity-80 hover:opacity-100"
-            title="Crear o pegar nuevo bosquejo de texto"
+            title="Pegar o escribir nuevo bosquejo"
           >
             <Plus className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Success Notification Banner when sections are reloaded */}
+      {/* Success Notification Banner */}
       {successBanner && (
-        <div className="flex items-center justify-between px-5 py-2.5 bg-blue-950/80 border-b border-blue-800/60 text-xs text-blue-200 animate-fade-in z-20">
+        <div className="flex items-center justify-between px-5 py-2 bg-blue-950/80 border-b border-blue-800/60 text-xs text-blue-200 animate-fade-in z-20">
           <div className="flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{successBanner}</span>
           </div>
-          {onGoToSplitView && (
-            <button
-              onClick={onGoToSplitView}
-              className="flex items-center gap-1 font-semibold text-white hover:text-blue-300 underline underline-offset-2 ml-3 shrink-0"
-            >
-              <span>Abrir en Atril Dividido</span>
-              <ExternalLink className="w-3 h-3" />
-            </button>
-          )}
+          <button
+            onClick={() => setSuccessBanner(null)}
+            className="text-neutral-400 hover:text-white text-xs ml-3"
+          >
+            Entendido
+          </button>
         </div>
       )}
 
       {/* Main Reading Canvas */}
-      <div className="flex-1 relative overflow-y-auto custom-scrollbar p-6 sm:p-10 flex flex-col items-center">
-        {/* Navigation Arrow Left `<` */}
-        <button
-          onClick={handlePrevPage}
-          disabled={!currentDoc || currentDoc.currentPage <= 1}
-          className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all disabled:opacity-20 disabled:cursor-not-allowed shadow-sm z-10"
-          title="Página / Pantalla anterior"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-
-        {/* Navigation Arrow Right `>` */}
-        <button
-          onClick={handleNextPage}
-          disabled={!currentDoc || currentDoc.currentPage >= currentDoc.totalPages}
-          className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all disabled:opacity-20 disabled:cursor-not-allowed shadow-sm z-10"
-          title="Página / Pantalla siguiente"
-        >
-          <ChevronRight className="w-6 h-6" />
-        </button>
-
-        {/* Reader Document Body */}
-        {currentDoc?.type === 'pdf' && currentDoc.pdfUrl ? (
+      <div className="flex-1 relative overflow-y-auto custom-scrollbar p-5 sm:p-8 flex flex-col items-center">
+        {/* If in edit mode: Direct In-Place Editor */}
+        {isEditingText ? (
+          <div className="w-full max-w-3xl flex flex-col flex-1 h-full min-h-[420px]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-neutral-300">
+                Edita o pega el texto exacto de tu bosquejo:
+              </span>
+              <span className="text-[11px] text-neutral-400">
+                Tus palabras se mantendrán intactas
+              </span>
+            </div>
+            <textarea
+              value={editedTextContent}
+              onChange={(e) => setEditedTextContent(e.target.value)}
+              className="flex-1 w-full p-4 rounded-xl bg-neutral-900 border border-neutral-700 text-white font-sans text-sm sm:text-base leading-relaxed focus:outline-none focus:border-blue-500 resize-none min-h-[380px]"
+              placeholder="Escribe o pega aquí el texto tal cual tu bosquejo..."
+            />
+            <div className="flex items-center justify-end gap-3 mt-3">
+              <button
+                onClick={() => setIsEditingText(false)}
+                className="px-4 py-2 text-xs text-neutral-400 hover:text-white bg-neutral-800 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveDirectEdit}
+                className="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors shadow"
+              >
+                Guardar Texto Íntegro
+              </button>
+            </div>
+          </div>
+        ) : isPdf && pdfDisplayMode === 'pdf-embed' && currentDoc?.pdfUrl ? (
+          /* Visor PDF original con formato intacto */
           <div className="w-full h-full min-h-[520px] max-w-4xl rounded-xl overflow-hidden shadow-sm border border-neutral-800 bg-neutral-900">
             <iframe
               src={currentDoc.pdfUrl}
@@ -513,24 +637,60 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
               title={currentDoc.title}
             />
           </div>
-        ) : (
+        ) : readingMode === 'continuous' ? (
+          /* Modo Desplazamiento Continuo: Muestra todo el bosquejo tal cual con párrafos fieles */
           <article
-            className="w-full max-w-3xl py-4 px-6 sm:px-12 leading-relaxed font-sans select-text"
+            className="w-full max-w-3xl py-4 px-4 sm:px-8 leading-relaxed font-sans select-text text-left"
             style={{
               fontSize: `${currentDoc?.fontSize || 22}px`,
               lineHeight: currentDoc?.lineHeight || 1.7,
             }}
           >
-            {currentPageText.split('\n\n').map((para, idx) => (
-              <p key={idx} className="mb-6 whitespace-pre-line text-justify">
+            {(currentDoc?.content || '').split('\n\n').map((para, idx) => (
+              <p key={idx} className="mb-6 whitespace-pre-wrap">
                 {para}
               </p>
             ))}
           </article>
+        ) : (
+          /* Modo Paginado con flechas */
+          <>
+            <button
+              onClick={handlePrevPage}
+              disabled={!currentDoc || currentDoc.currentPage <= 1}
+              className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all disabled:opacity-20 disabled:cursor-not-allowed shadow-sm z-10"
+              title="Página anterior"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+
+            <button
+              onClick={handleNextPage}
+              disabled={!currentDoc || currentDoc.currentPage >= currentDoc.totalPages}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/5 hover:bg-white/15 transition-all disabled:opacity-20 disabled:cursor-not-allowed shadow-sm z-10"
+              title="Página siguiente"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+
+            <article
+              className="w-full max-w-3xl py-4 px-6 sm:px-12 leading-relaxed font-sans select-text text-left"
+              style={{
+                fontSize: `${currentDoc?.fontSize || 22}px`,
+                lineHeight: currentDoc?.lineHeight || 1.7,
+              }}
+            >
+              {currentPageText.split('\n\n').map((para, idx) => (
+                <p key={idx} className="mb-6 whitespace-pre-wrap">
+                  {para}
+                </p>
+              ))}
+            </article>
+          </>
         )}
       </div>
 
-      {/* Bottom Pagination Bar */}
+      {/* Bottom Pagination / Status Bar */}
       <footer
         className="flex items-center justify-between px-6 py-2.5 border-t text-xs select-none"
         style={{
@@ -539,32 +699,33 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
           color: currentTheme.headerText,
         }}
       >
-        <span className="text-[11px] opacity-75">
-          {currentDoc?.type === 'pdf'
-            ? 'Documento PDF Cargado con Secciones'
-            : 'Modo Lectura Activa para Oratoria'}
+        <span className="text-[11px] opacity-80 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span>Texto textual del bosquejo original</span>
         </span>
 
-        {/* "Pantalla X de Y" display */}
-        <div className="flex items-center gap-2 font-medium">
-          <button
-            onClick={handlePrevPage}
-            disabled={!currentDoc || currentDoc.currentPage <= 1}
-            className="p-1 hover:opacity-100 disabled:opacity-30"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span>
-            Pantalla {currentDoc?.currentPage || 1} de {currentDoc?.totalPages || 1}
-          </span>
-          <button
-            onClick={handleNextPage}
-            disabled={!currentDoc || currentDoc.currentPage >= currentDoc.totalPages}
-            className="p-1 hover:opacity-100 disabled:opacity-30"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {/* Pagination controls (active in paginated mode) */}
+        {readingMode === 'paginated' && (
+          <div className="flex items-center gap-2 font-medium">
+            <button
+              onClick={handlePrevPage}
+              disabled={!currentDoc || currentDoc.currentPage <= 1}
+              className="p-1 hover:opacity-100 disabled:opacity-30"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span>
+              Pantalla {currentDoc?.currentPage || 1} de {currentDoc?.totalPages || 1}
+            </span>
+            <button
+              onClick={handleNextPage}
+              disabled={!currentDoc || currentDoc.currentPage >= currentDoc.totalPages}
+              className="p-1 hover:opacity-100 disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           {documents.length > 1 && (
@@ -581,14 +742,13 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
 
       {/* Upload or Create Outline Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl text-white">
             <h3 className="text-base font-bold mb-1">
-              Agregar Fuente de Consulta o Bosquejo
+              Agregar Bosquejo o Fuente de Consulta
             </h3>
             <p className="text-xs text-neutral-400 mb-4">
-              Pega el texto de tu discurso, bosquejo de asamblea o notas para irlo
-              leyendo durante el ensayo y generar automáticamente las secciones.
+              Pega el texto de tu discurso tal cual lo preparaste. Se conservarán exactamente todas tus palabras e ideas.
             </p>
 
             <form onSubmit={handleCreateTextDoc} className="space-y-4">
@@ -608,14 +768,14 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-neutral-300 mb-1">
-                  Contenido del Texto / Párrafos
+                  Contenido del Texto (Palabra por palabra)
                 </label>
                 <textarea
                   required
                   rows={8}
                   value={newDocContent}
                   onChange={(e) => setNewDocContent(e.target.value)}
-                  placeholder="Pega aquí los párrafos o puntos clave..."
+                  placeholder="Pega aquí los párrafos o puntos exactos..."
                   className="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 resize-none font-sans leading-relaxed"
                 />
               </div>
@@ -630,9 +790,9 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm"
+                  className="px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm"
                 >
-                  Guardar y Recargar Secciones
+                  Guardar Texto Íntegro
                 </button>
               </div>
             </form>

@@ -81,25 +81,44 @@ export const INITIAL_SPEECH_DRAFTS: SpeechDraft[] = [
         id: 'sec-1',
         title: '1. Gancho Inicial (0:00 - 1:15)',
         estimatedMinutes: 1.25,
-        notes: '• Pregunta retórica al público: ¿Cuántos datos recuerdas de la última reunión?\n• Anécdota personal breve: La primera vez que hablé en público y se me olvidó todo el guión.\n• Pausa dramática de 2 segundos antes de la tesis central.',
+        notes: 'Pregunta retórica al público y anécdota personal sobre la primera vez que hablé en público.',
+        keyPoints: [
+          '¿Cuántos datos recuerdas de la última reunión?',
+          'Anécdota: el día que se me olvidó el guión',
+          'Pausa de 2 segundos antes de la tesis central',
+        ],
       },
       {
         id: 'sec-2',
         title: '2. El Problema: Saturación de Datos (1:15 - 3:00)',
         estimatedMinutes: 1.75,
-        notes: '• Las personas no toman decisiones por hojas de cálculo, sino por emociones justificadas con lógica.\n• Ejemplo claro: Comparar una diapositiva llena de texto vs. una historia de un cliente real.',
+        notes: 'Las personas deciden por emociones justificadas con lógica.',
+        keyPoints: [
+          'Diferencia entre diapositiva saturada vs. historia humana',
+          'La atención disminuye tras los primeros 90 segundos',
+        ],
       },
       {
         id: 'sec-3',
         title: '3. La Fórmula de la Conexión (3:00 - 5:30)',
         estimatedMinutes: 2.5,
-        notes: '• Los 3 elementos indispensables: Protagonista vulnerable, obstáculo insuperable, transformación.\n• Modulación de voz: Bajar el tono al describir el conflicto; aumentar ritmo y energía en la resolución.',
+        notes: 'Los 3 elementos indispensables: Protagonista vulnerable, obstáculo insuperable, transformación.',
+        keyPoints: [
+          'Elemento 1: Protagonista vulnerable y cercano',
+          'Elemento 2: El obstáculo que desafía al protagonista',
+          'Modulación: Bajar tono en el conflicto, subir energía al resolver',
+        ],
       },
       {
         id: 'sec-4',
         title: '4. Conclusión y Llamado a la Acción (5:30 - 7:00)',
         estimatedMinutes: 1.5,
-        notes: '• Síntesis en una sola frase memorable.\n• Reto directo a la audiencia: En su próxima presentación, comiencen con una historia.\n• Cierre con agradecimiento firme, sin prisa.',
+        notes: 'Síntesis memorable y reto directo a la audiencia.',
+        keyPoints: [
+          'Frase de cierre memorable',
+          'Reto: empezar la próxima presentación con un relato',
+          'Agradecimiento firme y pausado',
+        ],
       },
     ],
     fullText: `¿Alguna vez se han preguntado por qué olvidamos el 90% de los gráficos que vemos en una presentación, pero recordamos intacta una fábula que nos contaron en la infancia?
@@ -131,16 +150,6 @@ Ella se encargaba de que estuviéramos preparados para las reuniones —recuerda
 Al principio Wanda lloraba antes de dormirse. Entonces recordó el consejo de su madre de llevar sus problemas a Jehová en oración. Oró y pronto pensó en examinar la guía telefónica para ver si había testigos de Jehová en aquella zona. Se comunicó con ellos y se enteró de que una familia de Testigos vivía cerca de la casa de su padre. "¡Qué contenta me puse!", dice Wanda. Con el ánimo que recibió de esta familia, Wanda pudo ayudar a su hermano y su hermana menores a reactivarse en el servicio cristiano.
 
 Ella se encargaba de que estuviéramos preparados para las reuniones —recuerda—. Tenía que lavar la ropa, ver que estuviéramos peinados y asegurarme de que estuviéramos limpios y presentables. Era trabajo duro para una joven, pero lo hizo. En cierta ocasión el padre trató de impedir que fueran a la reunión dominical, pero la determinación y el respeto de los hijos conmovieron su corazón.`,
-      `El ejemplo de perseverancia y fe viva:
-1. La importancia de la oración constante ante la incertidumbre.
-2. Cómo buscar apoyo espiritual en la comunidad local.
-3. El cuidado de los más jóvenes con amor y paciencia.
-4. Aplicación práctica: No desmayar cuando las circunstancias familiares sean desafiantes.
-
-Puntos para enfatizar en la oratoria:
-• Modulación suave y empática al relatar el sufrimiento inicial de Wanda.
-• Aumento del brillo vocal y entusiasmo al pronunciar: "¡Qué contenta me puse!".
-• Pausa tras la pregunta reflexiva para permitir que la congregación medite en la lección.`,
     ],
   },
   {

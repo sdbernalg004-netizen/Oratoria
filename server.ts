@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import mammoth from 'mammoth';
 
 dotenv.config();
 
@@ -134,29 +135,40 @@ app.post('/api/extract-pdf-sections', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No se recibió el archivo PDF en base64.' });
     }
 
-    const promptText = `Lee este documento PDF adjunto y prepáralo como material de ensayo de oratoria para un orador.
-1. Extrae y organiza el contenido en secciones claras de oratoria (ej: Introducción, Puntos principales, Anécdotas/Citas, Conclusión).
-2. Para cada sección provee un título elocuente, el tiempo estimado sugerido en minutos (a una velocidad oratoria típica de 135 palabras por minuto), y los puntos clave en 'notes'.
-3. Extrae el texto completo continuo en 'fullText' para teleprómpter.
-4. Divide el texto en pantallas de lectura para el visor de atril en el array 'pages' (cada página con 1 a 3 párrafos legibles a distancia).
-5. Calcula 'suggestedTargetSeconds' (total de segundos recomendados para este discurso).
+    const promptText = `Lee atentamente este documento PDF adjunto.
+INSTRUCCIÓN CRÍTICA DE MÁXIMA PRIORIDAD:
+NO MODIFIQUES EL TEXTO NI LAS IDEAS DEL AUTOR. El orador necesita que sus ideas, palabras, citas, encabezados y orden se mantengan TAL CUAL aparecen en el bosquejo original. NO resumas, NO inventes redacción propia, NO 'mejores' el estilo ni omitas oraciones.
+
+Tareas:
+1. En 'fullText': Extrae la transcripción ÍNTEGRA, EXACTA y VERBATIM (palabra por palabra) de todo el documento tal cual está escrito.
+2. En 'sections': Identifica las divisiones o puntos reales del documento (conservando sus títulos exactos o ideas principales textuales). Para cada una provee:
+   - 'title': Título o encabezado textual del punto según el documento.
+   - 'estimatedMinutes': Tiempo estimado en minutos (a 135 palabras por minuto).
+   - 'notes': El texto literal o ideas textuales de ese punto del documento (sin parafrasear).
+   - 'keyPoints': Lista de 2 a 5 puntos o frases textuales clave del documento para que el orador los revise mientras habla.
+3. En 'pages': Divide el texto íntegro en pantallas de lectura sin cambiar ninguna palabra.
+4. En 'suggestedTargetSeconds': Tiempo total recomendado en segundos basado en la longitud real del documento.
 
 Devuelve tu respuesta ÚNICAMENTE en JSON válido con esta estructura:
 {
   "title": "${fileName}",
-  "fullText": "Texto completo del documento...",
+  "fullText": "Transcripción íntegra y exacta palabra por palabra del documento...",
   "suggestedTargetSeconds": 420,
   "sections": [
     {
       "id": "sec-1",
-      "title": "1. Introducción y Apertura",
+      "title": "Título textual del punto",
       "estimatedMinutes": 1.5,
-      "notes": "Puntos esenciales a transmitir en la apertura..."
+      "notes": "Texto textual del documento para este punto...",
+      "keyPoints": [
+        "Frase o idea textual clave 1",
+        "Frase o idea textual clave 2"
+      ]
     }
   ],
   "pages": [
-    "Contenido de la primera pantalla de lectura...",
-    "Contenido de la segunda pantalla de lectura..."
+    "Pantalla 1 con texto íntegro...",
+    "Pantalla 2 con texto íntegro..."
   ]
 }`;
 
@@ -175,7 +187,7 @@ Devuelve tu respuesta ÚNICAMENTE en JSON válido con esta estructura:
       },
       config: {
         responseMimeType: 'application/json',
-        temperature: 0.2,
+        temperature: 0.1,
       },
     });
 
@@ -194,6 +206,101 @@ Devuelve tu respuesta ÚNICAMENTE en JSON válido con esta estructura:
     return res.status(500).json({
       success: false,
       error: error.message || 'Error al procesar el PDF con IA.',
+    });
+  }
+});
+
+// Endpoint to extract speech sections and key points from Word (.docx) files
+app.post('/api/extract-docx-sections', async (req, res) => {
+  try {
+    const { docxBase64, fileName = 'Discurso_Word' } = req.body;
+
+    if (!docxBase64) {
+      return res.status(400).json({ success: false, error: 'No se recibió el archivo Word en base64.' });
+    }
+
+    const buffer = Buffer.from(docxBase64, 'base64');
+    let extractedText = '';
+
+    try {
+      const mammothResult = await mammoth.extractRawText({ buffer });
+      extractedText = mammothResult.value;
+    } catch (mError: any) {
+      console.warn('Mammoth text extraction fallback:', mError);
+      extractedText = buffer.toString('utf8').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ');
+    }
+
+    if (!extractedText.trim()) {
+      return res.status(400).json({ success: false, error: 'No se pudo extraer texto del archivo Word.' });
+    }
+
+    // Pass the verbatim text to Gemini ONLY to extract section markers and key points,
+    // explicitly instructing NEVER to alter or paraphrase the text.
+    const promptText = `Lee atentamente el siguiente texto extraído directamente de un archivo Word (título: "${fileName}").
+INSTRUCCIÓN CRÍTICA DE MÁXIMA PRIORIDAD:
+NO MODIFIQUES EL TEXTO NI LAS IDEAS DEL AUTOR. El orador necesita que sus ideas, citas, notas y bosquejo se mantengan EXACTAMENTE como él los escribió. NO resumas, NO cambies vocabulario, NO agregues introducciones inventadas.
+
+Texto exacto del documento:
+${extractedText.slice(0, 20000)}
+
+Tareas:
+1. En 'sections': Identifica las divisiones, encabezados o puntos principales tal como están en el texto original.
+   - 'title': Encabezado o título textual del punto.
+   - 'estimatedMinutes': Tiempo en minutos a 135 palabras por minuto.
+   - 'notes': Texto textual correspondiente a ese punto (sin resumir).
+   - 'keyPoints': 2 a 5 frases textuales clave tomadas directamente del documento.
+2. En 'suggestedTargetSeconds': Tiempo total recomendado en segundos según el conteo de palabras del texto.
+
+Devuelve tu respuesta ÚNICAMENTE en JSON válido con esta estructura:
+{
+  "title": "${fileName}",
+  "suggestedTargetSeconds": 420,
+  "sections": [
+    {
+      "id": "sec-1",
+      "title": "Encabezado textual 1",
+      "estimatedMinutes": 1.5,
+      "notes": "Texto textual del documento...",
+      "keyPoints": [
+        "Punto textual 1",
+        "Punto textual 2"
+      ]
+    }
+  ]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: promptText,
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+      },
+    });
+
+    const textOutput = response.text || '{}';
+    let extractedData;
+    try {
+      extractedData = JSON.parse(textOutput);
+    } catch {
+      const cleaned = textOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      extractedData = JSON.parse(cleaned);
+    }
+
+    // Always guarantee that fullText is the exact, uncompromised rawText from mammoth
+    return res.json({
+      success: true,
+      data: {
+        ...extractedData,
+        fullText: extractedText,
+      },
+      rawText: extractedText,
+    });
+  } catch (error: any) {
+    console.error('Error extracting Word sections with Gemini:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Error al procesar el archivo Word con IA.',
     });
   }
 });

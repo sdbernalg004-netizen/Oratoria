@@ -22,6 +22,7 @@ export interface SpeechSection {
   title: string;
   estimatedMinutes?: number;
   notes: string;
+  keyPoints?: string[];
 }
 
 export interface SpeechDraft {

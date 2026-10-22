@@ -1,0 +1,150 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile data for registered speakers",
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Display name of the speaker"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Email address of the user"
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Avatar URL of the user"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Account registration timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Profile update timestamp"
+        }
+      },
+      "required": ["displayName", "email"]
+    },
+    "SpeechOutline": {
+      "title": "SpeechOutline",
+      "description": "Saved speech outline, notes, and uploaded source materials",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the speech owner"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Title of the speech or rehearsal"
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Category or topic (e.g. Persuasivo, Informativo, TED)"
+        },
+        "targetMinutes": {
+          "type": "number",
+          "description": "Target speech length in minutes"
+        },
+        "speechNotes": {
+          "type": "string",
+          "maxLength": 50000,
+          "description": "Full outline notes, script, or extracted document body"
+        },
+        "sections": {
+          "type": "array",
+          "description": "Structured sections with title, keyPoints, and timing"
+        },
+        "sourceFileName": {
+          "type": "string",
+          "maxLength": 255,
+          "description": "Original filename if uploaded from PDF or Word"
+        },
+        "sourceFileType": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "File format: pdf, docx, txt, or manual"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Last edit timestamp"
+        }
+      },
+      "required": ["userId", "title"]
+    },
+    "RehearsalLog": {
+      "title": "RehearsalLog",
+      "description": "History log of completed rehearsals, timing stats, and coaching evaluation",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the speaker who rehearsed"
+        },
+        "speechId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Associated speech outline ID"
+        },
+        "speechTitle": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Title of rehearsed speech"
+        },
+        "durationSeconds": {
+          "type": "number",
+          "description": "Total elapsed speaking time in seconds"
+        },
+        "targetSeconds": {
+          "type": "number",
+          "description": "Planned target speech time in seconds"
+        },
+        "evaluation": {
+          "type": "string",
+          "maxLength": 20000,
+          "description": "Oratory coaching feedback and recommendations"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Timestamp of the rehearsal"
+        }
+      },
+      "required": ["userId", "durationSeconds"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Individual user profiles protected by UID"
+    },
+    "/speeches/{speechId}": {
+      "schema": "SpeechOutline",
+      "description": "Saved speech outlines, structured sections, and source documents owned by the speaker"
+    },
+    "/rehearsals/{rehearsalId}": {
+      "schema": "RehearsalLog",
+      "description": "Completed rehearsal logs and AI coaching feedback owned by the speaker"
+    }
+  }
+}

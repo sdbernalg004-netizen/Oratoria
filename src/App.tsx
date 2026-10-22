@@ -12,10 +12,19 @@ import {
   SourceDocument,
   RehearsalRecord,
   AISpeechAnalysis,
+  SpeechSection,
 } from './types';
 import { useSpeechTimer, TimerStatus } from './hooks/useSpeechTimer';
 import { useVoiceRecorder, RecordedAudioResult } from './hooks/useVoiceRecorder';
 import { saveAudioBlob } from './utils/audioStorage';
+import { useAuth } from './context/AuthContext';
+import {
+  saveSpeechOutline,
+  deleteSpeechOutline,
+  subscribeToUserSpeeches,
+  saveRehearsalLog,
+  subscribeToUserRehearsals,
+} from './services/speechCloudService';
 import { Header } from './components/Header';
 import { TimerDisplay } from './components/TimerDisplay';
 import { TimerControls } from './components/TimerControls';
@@ -28,10 +37,15 @@ import { RehearsalReviewModal } from './components/RehearsalReviewModal';
 import { RehearsalHistoryView } from './components/RehearsalHistoryView';
 import { ShortcutsGuideModal } from './components/ShortcutsGuideModal';
 import { SpeechCoachReportModal } from './components/SpeechCoachReportModal';
+import { SavedSpeechesModal } from './components/SavedSpeechesModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { Cloud, Check, AlertCircle } from 'lucide-react';
 
 export default function App() {
-  // Navigation / View State - Default to 'reader-floating' matching user's uploaded screenshot!
-  const [currentView, setCurrentView] = useState<'reader-floating' | 'split' | 'timer-only' | 'history'>('reader-floating');
+  const { user } = useAuth();
+
+  // Navigation / View State
+  const [currentView, setCurrentView] = useState<'reader-floating' | 'split' | 'timer-only' | 'history'>('split');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // Modals
@@ -39,6 +53,20 @@ export default function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isCoachReportOpen, setIsCoachReportOpen] = useState(false);
+  const [isSavedSpeechesOpen, setIsSavedSpeechesOpen] = useState(false);
+
+  // Notification Toast
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  const showToast = useCallback((text: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => {
+      setToastMessage((curr) => (curr?.text === text ? null : curr));
+    }, 4500);
+  }, []);
+
+  // File uploading and extraction state
+  const [isUploadingToAtril, setIsUploadingToAtril] = useState(false);
 
   // Sound Alert Settings
   const [soundSettings, setSoundSettings] = useState<SoundAlertSettings>(() => {
@@ -158,6 +186,45 @@ export default function App() {
     },
   });
 
+  // Subscribe to Cloud Firestore when user is logged in
+  useEffect(() => {
+    if (!user) return;
+
+    // Speeches subscription
+    const unsubSpeeches = subscribeToUserSpeeches(user.uid, (cloudSpeeches, cloudDocs) => {
+      if (cloudSpeeches.length > 0) {
+        setSpeeches((prevLocal) => {
+          // Merge avoiding duplicates, prioritizing cloud items
+          const cloudIds = new Set(cloudSpeeches.map((s) => s.id));
+          const localOnly = prevLocal.filter((s) => !cloudIds.has(s.id));
+          return [...cloudSpeeches, ...localOnly];
+        });
+
+        setDocuments((prevDocs) => {
+          const cloudDocIds = new Set(cloudDocs.map((d) => d.id));
+          const localDocsOnly = prevDocs.filter((d) => !cloudDocIds.has(d.id));
+          return [...cloudDocs, ...localDocsOnly];
+        });
+      }
+    });
+
+    // Rehearsals subscription
+    const unsubRehearsals = subscribeToUserRehearsals(user.uid, (cloudRehearsals) => {
+      if (cloudRehearsals.length > 0) {
+        setRehearsals((prevLocal) => {
+          const cloudIds = new Set(cloudRehearsals.map((r) => r.id));
+          const localOnly = prevLocal.filter((r) => !cloudIds.has(r.id));
+          return [...cloudRehearsals, ...localOnly].sort((a, b) => b.timestamp - a.timestamp);
+        });
+      }
+    });
+
+    return () => {
+      unsubSpeeches();
+      unsubRehearsals();
+    };
+  }, [user]);
+
   // LocalStorage synchronizations
   useEffect(() => {
     try {
@@ -227,35 +294,322 @@ export default function App() {
     setTargetSeconds(totalSec);
   };
 
-  // Handler when a PDF or document is uploaded: reloads all sections in the Split Lectern View!
-  const handlePDFExtracted = (extractedData: any, pdfUrl?: string) => {
-    const newSpeechDraft: SpeechDraft = {
-      id: `speech_extracted_${Date.now()}`,
-      title: extractedData.title || 'Discurso desde Documento',
-      topic: 'Oratoria y Presentación',
-      targetSeconds: extractedData.suggestedTargetSeconds || 420,
-      sections:
-        extractedData.sections && extractedData.sections.length > 0
-          ? extractedData.sections
-          : [
-              {
-                id: 'sec-1',
-                title: '1. Introducción y Apertura',
-                estimatedMinutes: 1.5,
-                notes: extractedData.fullText?.slice(0, 300) || 'Puntos clave del documento...',
-              },
-            ],
-      fullText: extractedData.fullText || '',
-      lastEdited: Date.now(),
-    };
+  /**
+   * Select a speech to load into the lectern and timer
+   */
+  const handleSelectSpeech = (speechId: string) => {
+    const idx = speeches.findIndex((s) => s.id === speechId);
+    if (idx !== -1) {
+      setActiveSpeechIndex(idx);
+      const chosen = speeches[idx];
+      setTargetSeconds(chosen.targetSeconds || 420);
 
-    // Add or set as active speech
-    setSpeeches((prev) => [newSpeechDraft, ...prev]);
-    setActiveSpeechIndex(0);
+      // Match corresponding document if available
+      const matchedDoc = documents.find((d) => d.id === `doc-${chosen.id}` || d.title === chosen.title);
+      if (matchedDoc) {
+        setCurrentDocId(matchedDoc.id);
+      }
 
-    // Update timer target seconds to match extracted suggestion
-    if (extractedData.suggestedTargetSeconds) {
-      setTargetSeconds(extractedData.suggestedTargetSeconds);
+      showToast(`Bosquejo "${chosen.title}" cargado en el atril`, 'info');
+    }
+  };
+
+  /**
+   * Delete speech handler (from local and Firestore if logged in)
+   */
+  const handleDeleteSpeech = async (speechId: string) => {
+    setSpeeches((prev) => prev.filter((s) => s.id !== speechId));
+    setActiveSpeechIndex((prev) => Math.max(0, prev - 1));
+
+    if (user) {
+      try {
+        await deleteSpeechOutline(speechId);
+        showToast('Bosquejo eliminado de tu cuenta en la nube', 'info');
+      } catch (err) {
+        console.error('Error deleting speech from Firestore:', err);
+      }
+    }
+  };
+
+  /**
+   * Helper to divide raw verbatim text into pages preserving exact paragraphs and words
+   */
+  const splitTextIntoVerbatimPages = (rawText: string, maxCharsPerPage: number = 900): string[] => {
+    if (!rawText || !rawText.trim()) return [''];
+    const paragraphs = rawText.split('\n\n');
+    const pages: string[] = [];
+    let currentPage = '';
+
+    for (const para of paragraphs) {
+      if ((currentPage + '\n\n' + para).length > maxCharsPerPage && currentPage.trim().length > 0) {
+        pages.push(currentPage.trim());
+        currentPage = para;
+      } else {
+        currentPage = currentPage ? `${currentPage}\n\n${para}` : para;
+      }
+    }
+    if (currentPage.trim().length > 0) {
+      pages.push(currentPage.trim());
+    }
+    return pages.length > 0 ? pages : [rawText];
+  };
+
+  /**
+   * Unified file uploader: Extracts sections and key points with Gemini and loads them into Atril Dividido!
+   * Guarantees 100% verbatim fidelity so user ideas remain untouched.
+   * Automatically persists to Firestore when logged in.
+   */
+  const handleUploadAndExtractFile = async (file: File) => {
+    setIsUploadingToAtril(true);
+    const fileName = file.name.replace(/\.[^/.]+$/, '');
+
+    try {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const isWord =
+        file.name.toLowerCase().endsWith('.docx') ||
+        file.name.toLowerCase().endsWith('.doc') ||
+        file.type.includes('word') ||
+        file.type.includes('officedocument');
+
+      let newSpeech: SpeechDraft;
+      let newDoc: SourceDocument;
+
+      if (isWord) {
+        // Handle Word (.docx / .doc) documents
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            resolve(dataUrl.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const docxBase64 = await base64Promise;
+
+        const res = await fetch('/api/extract-docx-sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ docxBase64, fileName }),
+        });
+
+        const resData = await res.json();
+        let extractedData = {
+          title: fileName,
+          fullText: '',
+          sections: [] as SpeechSection[],
+          suggestedTargetSeconds: 420,
+        };
+
+        if (resData.success && resData.data) {
+          extractedData = resData.data;
+        }
+
+        // 100% verbatim text directly from mammoth or raw extraction
+        const verbatimWordText = resData.rawText || extractedData.fullText || '';
+        const wordPages = splitTextIntoVerbatimPages(verbatimWordText);
+
+        newSpeech = {
+          id: `speech_${Date.now()}`,
+          title: extractedData.title || fileName,
+          topic: 'Discurso desde Word',
+          targetSeconds: extractedData.suggestedTargetSeconds || 420,
+          sections:
+            extractedData.sections && extractedData.sections.length > 0
+              ? extractedData.sections
+              : [
+                  {
+                    id: 'sec-1',
+                    title: '1. Bosquejo Completo',
+                    estimatedMinutes: Math.round((verbatimWordText.split(/\s+/).length / 135) * 10) / 10,
+                    notes: verbatimWordText.slice(0, 500),
+                    keyPoints: ['Puntos del documento'],
+                  },
+                ],
+          fullText: verbatimWordText,
+          lastEdited: Date.now(),
+        };
+
+        newDoc = {
+          id: `doc_word_${Date.now()}`,
+          title: extractedData.title || fileName,
+          type: 'text',
+          content: verbatimWordText,
+          pages: wordPages,
+          currentPage: 1,
+          totalPages: Math.max(1, wordPages.length),
+          theme: 'dark',
+          fontSize: 22,
+          lineHeight: 1.7,
+        };
+      } else if (isPdf) {
+        const pdfUrl = URL.createObjectURL(file);
+
+        // Convert file to base64
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            resolve(dataUrl.split(',')[1]);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const pdfBase64 = await base64Promise;
+
+        // Call backend Gemini extraction
+        const res = await fetch('/api/extract-pdf-sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdfBase64, fileName }),
+        });
+
+        const resData = await res.json();
+        let extractedData = {
+          title: fileName,
+          fullText: '',
+          sections: [] as SpeechSection[],
+          suggestedTargetSeconds: 420,
+        };
+
+        if (resData.success && resData.data) {
+          extractedData = resData.data;
+        }
+
+        // 100% verbatim text extracted from PDF
+        const verbatimPdfText = extractedData.fullText || '';
+        const pdfPages = splitTextIntoVerbatimPages(verbatimPdfText);
+
+        newSpeech = {
+          id: `speech_${Date.now()}`,
+          title: extractedData.title || fileName,
+          topic: 'Discurso desde PDF',
+          targetSeconds: extractedData.suggestedTargetSeconds || 420,
+          sections:
+            extractedData.sections && extractedData.sections.length > 0
+              ? extractedData.sections
+              : [
+                  {
+                    id: 'sec-1',
+                    title: '1. Bosquejo de Oratoria',
+                    estimatedMinutes: Math.round((verbatimPdfText.split(/\s+/).length / 135) * 10) / 10,
+                    notes: verbatimPdfText.slice(0, 500),
+                    keyPoints: ['Ideas principales del PDF'],
+                  },
+                ],
+          fullText: verbatimPdfText,
+          lastEdited: Date.now(),
+        };
+
+        newDoc = {
+          id: `doc_pdf_${Date.now()}`,
+          title: extractedData.title || fileName,
+          type: 'pdf',
+          content: verbatimPdfText,
+          pdfUrl,
+          pages: pdfPages,
+          currentPage: 1,
+          totalPages: Math.max(1, pdfPages.length),
+          theme: 'dark',
+          fontSize: 20,
+          lineHeight: 1.6,
+        };
+      } else {
+        // Plain text or markdown
+        const textReader = new FileReader();
+        const textPromise = new Promise<string>((resolve) => {
+          textReader.onload = (e) => resolve((e.target?.result as string) || '');
+        });
+        textReader.readAsText(file);
+        const text = await textPromise;
+        const paragraphs = text.split('\n\n').filter(Boolean);
+
+        const sections: SpeechSection[] = paragraphs.slice(0, 5).map((para, i) => {
+          const lines = para.split('\n').filter(Boolean);
+          return {
+            id: `sec-${i + 1}`,
+            title:
+              i === 0
+                ? '1. Introducción'
+                : i === paragraphs.length - 1
+                ? `${i + 1}. Conclusión`
+                : `Punto ${i + 1}`,
+            estimatedMinutes: 1.5,
+            notes: para.slice(0, 300),
+            keyPoints: lines.slice(0, 3).map((l) => l.replace(/^[-•*]\s*/, '').slice(0, 80)),
+          };
+        });
+
+        const verbatimTextPages = splitTextIntoVerbatimPages(text);
+
+        newSpeech = {
+          id: `speech_${Date.now()}`,
+          title: fileName,
+          topic: 'Bosquejo Importado',
+          targetSeconds: Math.max(120, Math.round((text.split(/\s+/).length / 135) * 60)),
+          sections:
+            sections.length > 0
+              ? sections
+              : [
+                  {
+                    id: 'sec-1',
+                    title: '1. Bosquejo',
+                    estimatedMinutes: 1.5,
+                    notes: text.slice(0, 300),
+                    keyPoints: ['Punto inicial'],
+                  },
+                ],
+          fullText: text,
+          lastEdited: Date.now(),
+        };
+
+        newDoc = {
+          id: `doc_text_${Date.now()}`,
+          title: fileName,
+          type: 'text',
+          content: text,
+          pages: verbatimTextPages,
+          currentPage: 1,
+          totalPages: Math.max(1, verbatimTextPages.length),
+          theme: 'dark',
+          fontSize: 22,
+          lineHeight: 1.7,
+        };
+      }
+
+      // Update state
+      setDocuments((prev) => [newDoc, ...prev]);
+      setCurrentDocId(newDoc.id);
+
+      setSpeeches((prev) => [newSpeech, ...prev]);
+      setActiveSpeechIndex(0);
+
+      if (newSpeech.targetSeconds) {
+        setTargetSeconds(newSpeech.targetSeconds);
+      }
+
+      // If user is authenticated, save permanently to Firestore
+      if (user) {
+        try {
+          await saveSpeechOutline(user.uid, newSpeech, newDoc);
+          showToast(`Bosquejo "${newSpeech.title}" guardado íntegro en tu cuenta`, 'success');
+        } catch (cloudErr) {
+          console.error('Error saving speech to cloud:', cloudErr);
+          showToast('Guardado localmente. Hubo un detalle al sincronizar con la nube.', 'info');
+        }
+      } else {
+        showToast(`Bosquejo guardado íntegro localmente. ¡Inicia sesión para sincronizarlo!`, 'info');
+      }
+
+      // Switch automatically to 'split' (Atril Dividido) with loaded sections and key points
+      setCurrentView('split');
+    } catch (err: any) {
+      console.error('Error in handleUploadAndExtractFile:', err);
+      showToast('Error al procesar el archivo. Intenta nuevamente.', 'error');
+    } finally {
+      setIsUploadingToAtril(false);
     }
   };
 
@@ -301,8 +655,7 @@ export default function App() {
         audioBase64 = await new Promise<string>((resolve, reject) => {
           reader.onloadend = () => {
             const dataUrl = reader.result as string;
-            const base64 = dataUrl.split(',')[1];
-            resolve(base64);
+            resolve(dataUrl.split(',')[1]);
           };
           reader.onerror = reject;
           reader.readAsDataURL(pendingReviewData.recordedAudio!.blob);
@@ -319,10 +672,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          speechTitle:
-            currentView === 'reader-floating' && currentDoc
-              ? currentDoc.title
-              : currentSpeech.title,
+          speechTitle: currentSpeech.title,
           targetSeconds: pendingReviewData.targetSeconds,
           actualSeconds: pendingReviewData.actualSeconds,
           referenceSourceText,
@@ -354,7 +704,7 @@ export default function App() {
     }
   };
 
-  // Save reviewed record into history and IndexedDB
+  // Save reviewed record into history, IndexedDB, and Firestore
   const handleSaveReviewedRecord = async (
     recordData: Omit<RehearsalRecord, 'id' | 'timestamp'>
   ) => {
@@ -380,6 +730,17 @@ export default function App() {
     };
 
     setRehearsals((prev) => [newRecord, ...prev]);
+
+    // Save to Firestore if user is authenticated
+    if (user) {
+      try {
+        await saveRehearsalLog(user.uid, newRecord);
+        showToast('Ensayo y retroalimentación guardados en tu cuenta', 'success');
+      } catch (err) {
+        console.error('Error saving rehearsal to Firestore:', err);
+      }
+    }
+
     setIsReviewModalOpen(false);
     setPendingReviewData(null);
     setActiveAnalysis(null);
@@ -416,10 +777,18 @@ export default function App() {
   };
 
   // Speech Update
-  const handleUpdateCurrentSpeech = (updated: SpeechDraft) => {
+  const handleUpdateCurrentSpeech = async (updated: SpeechDraft) => {
     setSpeeches((prev) =>
       prev.map((s, idx) => (idx === activeSpeechIndex ? updated : s))
     );
+
+    if (user) {
+      try {
+        await saveSpeechOutline(user.uid, updated, currentDoc);
+      } catch (err) {
+        console.warn('Could not auto-save speech update to Firestore:', err);
+      }
+    }
   };
 
   // Keyboard Shortcuts Listener
@@ -451,7 +820,8 @@ export default function App() {
         if (isShortcutsOpen) setIsShortcutsOpen(false);
         if (isReviewModalOpen) setIsReviewModalOpen(false);
         if (isCoachReportOpen) setIsCoachReportOpen(false);
-        if (currentView === 'history') setCurrentView('reader-floating');
+        if (isSavedSpeechesOpen) setIsSavedSpeechesOpen(false);
+        if (currentView === 'history') setCurrentView('split');
       }
     };
 
@@ -467,6 +837,7 @@ export default function App() {
     isShortcutsOpen,
     isReviewModalOpen,
     isCoachReportOpen,
+    isSavedSpeechesOpen,
     currentView,
   ]);
 
@@ -478,10 +849,32 @@ export default function App() {
         onViewChange={setCurrentView}
         onOpenSoundModal={() => setIsSoundModalOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onOpenSavedSpeeches={() => setIsSavedSpeechesOpen(true)}
+        speechesCount={speeches.length}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
         historyCount={rehearsals.length}
       />
+
+      {/* Cloud feedback toast */}
+      {toastMessage && (
+        <div className="fixed top-16 right-5 z-50 animate-bounce flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-700/80 shadow-2xl text-xs font-medium text-white backdrop-blur-md">
+          {toastMessage.type === 'success' ? (
+            <span className="p-1 rounded-full bg-emerald-500/20 text-emerald-400">
+              <Check className="w-3.5 h-3.5" />
+            </span>
+          ) : toastMessage.type === 'error' ? (
+            <span className="p-1 rounded-full bg-red-500/20 text-red-400">
+              <AlertCircle className="w-3.5 h-3.5" />
+            </span>
+          ) : (
+            <span className="p-1 rounded-full bg-blue-500/20 text-blue-400">
+              <Cloud className="w-3.5 h-3.5" />
+            </span>
+          )}
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
 
       {/* Main View Area */}
       <main className="flex-1 flex flex-col p-3 sm:p-5 lg:p-6 max-w-7xl mx-auto w-full relative">
@@ -490,8 +883,8 @@ export default function App() {
             records={rehearsals}
             onDeleteRecord={(id) => setRehearsals((prev) => prev.filter((r) => r.id !== id))}
             onClearAll={() => setRehearsals([])}
-            onClose={() => setCurrentView('reader-floating')}
-            onViewAIReport={(analysis, title) => {
+            onClose={() => setCurrentView('split')}
+            onViewAIReport={(analysis) => {
               setActiveAnalysis(analysis);
               setIsCoachReportOpen(true);
             }}
@@ -506,11 +899,12 @@ export default function App() {
               onAddDocument={handleAddDocument}
               onUpdateDocument={handleUpdateDocument}
               onDeleteDocument={handleDeleteDocument}
-              onPDFExtracted={handlePDFExtracted}
+              onUploadFile={handleUploadAndExtractFile}
+              isProcessingFile={isUploadingToAtril}
               onGoToSplitView={() => setCurrentView('split')}
             />
 
-            {/* The Adaptable Draggable Stopwatch/Timer Widget (matching user screenshot) */}
+            {/* The Adaptable Draggable Stopwatch/Timer Widget */}
             <FloatingAdaptableTimer
               status={status}
               remainingSeconds={remainingSeconds}
@@ -524,7 +918,6 @@ export default function App() {
               isRecording={isRecording}
             />
 
-            {/* Subtle floating voice recording activity pill */}
             {isRecording && (
               <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-1.5 bg-neutral-900/90 text-neutral-200 text-xs rounded-full border border-neutral-700 shadow-lg backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
@@ -576,7 +969,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Modo Atril Dividido (Muestra el contenido recargado del PDF/bosquejo junto al cronómetro) */
+          /* Modo Atril Dividido: Secciones y Puntos Claves Recargados del PDF con Cronómetro */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1">
             <div className="lg:col-span-6 xl:col-span-5 flex flex-col gap-6 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 sm:p-6 justify-between">
               <div>
@@ -623,7 +1016,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Panel Derecho: Contenido del archivo y Secciones Recargadas */}
+            {/* Panel Derecho: Secciones y Puntos Claves con Botón de Carga Directa */}
             <div className="lg:col-span-6 xl:col-span-7 flex flex-col h-[650px] lg:h-auto min-h-[500px]">
               <SpeechTeleprompter
                 currentSpeech={currentSpeech}
@@ -631,6 +1024,8 @@ export default function App() {
                 isTimerRunning={status === 'running' || status === 'overtime'}
                 onSelectTemplate={() => {}}
                 activePdfUrl={currentDoc?.pdfUrl}
+                onUploadFile={handleUploadAndExtractFile}
+                isProcessingFile={isUploadingToAtril}
               />
             </div>
           </div>
@@ -650,14 +1045,31 @@ export default function App() {
         onClose={() => setIsShortcutsOpen(false)}
       />
 
+      {/* Saved Speeches and Outlines Modal */}
+      <SavedSpeechesModal
+        isOpen={isSavedSpeechesOpen}
+        onClose={() => setIsSavedSpeechesOpen(false)}
+        speeches={speeches}
+        activeSpeechId={currentSpeech.id}
+        onSelectSpeech={handleSelectSpeech}
+        onDeleteSpeech={handleDeleteSpeech}
+        onOpenUpload={() => {
+          // Open atril upload directly
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.pdf,.docx,.doc,.txt,.md';
+          input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) handleUploadAndExtractFile(file);
+          };
+          input.click();
+        }}
+      />
+
       {pendingReviewData && (
         <RehearsalReviewModal
           isOpen={isReviewModalOpen}
-          speechTitle={
-            currentView === 'reader-floating' && currentDoc
-              ? currentDoc.title
-              : currentSpeech.title
-          }
+          speechTitle={currentSpeech.title}
           targetSeconds={pendingReviewData.targetSeconds}
           actualSeconds={pendingReviewData.actualSeconds}
           isOvertime={pendingReviewData.isOvertime}
@@ -679,12 +1091,11 @@ export default function App() {
         isLoading={isAnalyzingAI}
         errorMessage={aiErrorMessage}
         onRetry={handleRequestAIAnalysis}
-        speechTitle={
-          currentView === 'reader-floating' && currentDoc
-            ? currentDoc.title
-            : currentSpeech.title
-        }
+        speechTitle={currentSpeech.title}
       />
+
+      {/* Offline Status Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141419" />
+      <stop offset="100%" stop-color="#070709" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+  </defs>
+
+  <!-- Full bleed solid background for Android maskable crops -->
+  <rect width="512" height="512" fill="url(#bgGrad)" />
+
+  <!-- Inner safe zone scale (76% size centered at 256, 256) -->
+  <g transform="translate(61.44, 61.44) scale(0.76)">
+    <!-- Outer Stopwatch Arc / Ring -->
+    <circle cx="256" cy="272" r="140" fill="none" stroke="#1f2430" stroke-width="18" />
+    <circle cx="256" cy="272" r="140" fill="none" stroke="url(#glowGrad)" stroke-width="18"
+            stroke-dasharray="879.6" stroke-dashoffset="260" stroke-linecap="round" />
+
+    <!-- Stopwatch Top Stem and Button -->
+    <rect x="242" y="90" width="28" height="34" rx="6" fill="url(#accentGrad)" />
+    <rect x="226" y="80" width="60" height="14" rx="7" fill="#60a5fa" />
+
+    <!-- Dial Ticks -->
+    <line x1="256" y1="148" x2="256" y2="164" stroke="#60a5fa" stroke-width="5" stroke-linecap="round" />
+    <line x1="380" y1="272" x2="364" y2="272" stroke="#60a5fa" stroke-width="5" stroke-linecap="round" />
+    <line x1="256" y1="396" x2="256" y2="380" stroke="#475569" stroke-width="5" stroke-linecap="round" />
+    <line x1="132" y1="272" x2="148" y2="272" stroke="#475569" stroke-width="5" stroke-linecap="round" />
+
+    <!-- Center Oratory Microphone / Podio Motif -->
+    <path d="M256 195 C240 195 228 207 228 223 L228 275 C228 291 240 303 256 303 C272 303 284 291 284 275 L284 223 C284 207 272 195 256 195 Z"
+          fill="url(#accentGrad)" />
+    <path d="M212 255 C212 284 231 307 256 312 L256 338 L238 338 C233 338 230 342 230 346 C230 350 233 354 238 354 L274 354 C279 354 282 350 282 346 C282 342 279 338 274 338 L256 338 L256 312 C281 307 300 284 300 255"
+          fill="none" stroke="#60a5fa" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+
+    <!-- Brand Sparkle -->
+    <circle cx="340" cy="188" r="8" fill="#38bdf8" />
+  </g>
+</svg>
