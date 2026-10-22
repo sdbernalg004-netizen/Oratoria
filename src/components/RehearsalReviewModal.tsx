@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RehearsalRecord } from '../types';
+import { RehearsalRecord, AISpeechAnalysis } from '../types';
 import { RecordedAudioResult } from '../hooks/useVoiceRecorder';
 import { formatHumanTime } from '../hooks/useSpeechTimer';
 import {
@@ -11,6 +11,7 @@ import {
   Save,
   Volume2,
   Clock,
+  Sparkles,
 } from 'lucide-react';
 
 interface RehearsalReviewModalProps {
@@ -23,6 +24,9 @@ interface RehearsalReviewModalProps {
   recordedAudio: RecordedAudioResult | null;
   onSaveRecord: (record: Omit<RehearsalRecord, 'id' | 'timestamp'>) => void;
   onDiscard: () => void;
+  onRequestAIAnalysis?: () => void;
+  aiAnalysis?: AISpeechAnalysis | null;
+  isAnalyzingAI?: boolean;
 }
 
 export const RehearsalReviewModal: React.FC<RehearsalReviewModalProps> = ({
@@ -35,6 +39,9 @@ export const RehearsalReviewModal: React.FC<RehearsalReviewModalProps> = ({
   recordedAudio,
   onSaveRecord,
   onDiscard,
+  onRequestAIAnalysis,
+  aiAnalysis,
+  isAnalyzingAI = false,
 }) => {
   const [rating, setRating] = useState<number>(4);
   const [notes, setNotes] = useState<string>('');
@@ -42,7 +49,7 @@ export const RehearsalReviewModal: React.FC<RehearsalReviewModalProps> = ({
   if (!isOpen) return null;
 
   const delta = actualSeconds - targetSeconds;
-  const isCloseToTarget = Math.abs(delta) <= 15; // within 15s is excellent in oratory
+  const isCloseToTarget = Math.abs(delta) <= 15;
 
   const handleSave = () => {
     onSaveRecord({
@@ -54,6 +61,7 @@ export const RehearsalReviewModal: React.FC<RehearsalReviewModalProps> = ({
       audioBlobUrl: recordedAudio?.url,
       rating,
       notes,
+      aiAnalysis: aiAnalysis || undefined,
     });
   };
 
@@ -122,6 +130,41 @@ export const RehearsalReviewModal: React.FC<RehearsalReviewModalProps> = ({
               </span>
             </div>
           </div>
+
+          {/* AI Oratory Coach Action Button */}
+          {onRequestAIAnalysis && (
+            <div className="p-4 bg-purple-950/20 border border-purple-800/40 rounded-xl flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-5 h-5 text-purple-400 shrink-0" />
+                <div>
+                  <h4 className="text-xs font-bold text-white">
+                    Entrenador de Oratoria con IA
+                  </h4>
+                  <p className="text-[11px] text-neutral-400">
+                    {aiAnalysis
+                      ? `Análisis generado: Puntaje ${aiAnalysis.overallScore}/100`
+                      : 'Analiza tu voz, modulación y contraste con el bosquejo'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onRequestAIAnalysis}
+                disabled={isAnalyzingAI}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm disabled:opacity-50 shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>
+                  {isAnalyzingAI
+                    ? 'Analizando...'
+                    : aiAnalysis
+                    ? 'Ver Análisis'
+                    : 'Analizar Voz con IA'}
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Audio Recording playback if available */}
           {recordedAudio && (

@@ -1,9 +1,9 @@
 import React from 'react';
-import { Maximize2, Minimize2, Bell, History, Split, Monitor, HelpCircle } from 'lucide-react';
+import { Maximize2, Minimize2, Bell, History, Split, Monitor, HelpCircle, BookOpen, Layers } from 'lucide-react';
 
 interface HeaderProps {
-  currentView: 'split' | 'timer-only' | 'history';
-  onViewChange: (view: 'split' | 'timer-only' | 'history') => void;
+  currentView: 'reader-floating' | 'split' | 'timer-only' | 'history';
+  onViewChange: (view: 'reader-floating' | 'split' | 'timer-only' | 'history') => void;
   onOpenSoundModal: () => void;
   onOpenShortcuts: () => void;
   isFullscreen: boolean;
@@ -21,7 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   historyCount,
 }) => {
   return (
-    <header className="flex items-center justify-between gap-8 px-5 py-3 border-b border-neutral-800/80 bg-neutral-950/95 backdrop-blur-md sticky top-0 z-30">
+    <header className="flex items-center justify-between gap-6 px-5 py-3 border-b border-neutral-800/80 bg-neutral-950/95 backdrop-blur-md sticky top-0 z-30">
       {/* Zone 1: Brand wordmark */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 font-semibold text-sm">
@@ -32,13 +32,26 @@ export const Header: React.FC<HeaderProps> = ({
             OratoriaPro
           </span>
           <span className="text-[11px] text-neutral-400 tracking-wide font-normal">
-            Atril & Cronómetro de Ensayos
+            Atril, Lector & Cronómetro Adaptable
           </span>
         </div>
       </div>
 
       {/* Zone 2: Navigation Links / View Switchers (Single line) */}
-      <nav className="hidden sm:flex items-center gap-6 text-sm font-medium text-neutral-400">
+      <nav className="hidden sm:flex items-center gap-5 text-sm font-medium text-neutral-400">
+        <button
+          onClick={() => onViewChange('reader-floating')}
+          className={`flex items-center gap-1.5 transition-colors whitespace-nowrap py-1 ${
+            currentView === 'reader-floating'
+              ? 'text-white border-b-2 border-blue-500 font-semibold'
+              : 'hover:text-neutral-200'
+          }`}
+          title="Lector de fuentes con cronómetro flotante adaptable"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Lector & Flotante</span>
+        </button>
+
         <button
           onClick={() => onViewChange('split')}
           className={`flex items-center gap-1.5 transition-colors whitespace-nowrap py-1 ${

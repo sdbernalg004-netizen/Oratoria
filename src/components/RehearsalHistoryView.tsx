@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RehearsalRecord } from '../types';
+import { RehearsalRecord, AISpeechAnalysis } from '../types';
 import { getAudioBlob, deleteAudioBlob } from '../utils/audioStorage';
 import { formatHumanTime } from '../hooks/useSpeechTimer';
 import {
@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Search,
   Volume2,
+  Sparkles,
 } from 'lucide-react';
 
 interface RehearsalHistoryViewProps {
@@ -21,6 +22,7 @@ interface RehearsalHistoryViewProps {
   onDeleteRecord: (id: string) => void;
   onClearAll: () => void;
   onClose: () => void;
+  onViewAIReport?: (analysis: AISpeechAnalysis, title: string) => void;
 }
 
 export const RehearsalHistoryView: React.FC<RehearsalHistoryViewProps> = ({
@@ -28,12 +30,11 @@ export const RehearsalHistoryView: React.FC<RehearsalHistoryViewProps> = ({
   onDeleteRecord,
   onClearAll,
   onClose,
+  onViewAIReport,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loadedAudioUrls, setLoadedAudioUrls] = useState<Record<string, string>>({});
-  const [activePlayingId, setActivePlayingId] = useState<string | null>(null);
 
-  // Load audio blobs for records that have audioStorageKey
   useEffect(() => {
     let isCancelled = false;
 
@@ -103,7 +104,7 @@ export const RehearsalHistoryView: React.FC<RehearsalHistoryViewProps> = ({
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-medium text-white bg-neutral-800 hover:bg-neutral-700 rounded-lg transition-colors"
           >
-            Volver al Atril
+            Volver
           </button>
         </div>
       </div>
@@ -186,6 +187,16 @@ export const RehearsalHistoryView: React.FC<RehearsalHistoryViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-3">
+                    {rec.aiAnalysis && onViewAIReport && (
+                      <button
+                        onClick={() => onViewAIReport(rec.aiAnalysis!, rec.speechTitle)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-950/60 hover:bg-purple-900/80 border border-purple-800/50 text-purple-300 rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Consejos IA ({rec.aiAnalysis.overallScore}/100)</span>
+                      </button>
+                    )}
+
                     {rec.rating && (
                       <div className="flex items-center gap-0.5">
                         {Array.from({ length: 5 }).map((_, i) => (

@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   DEFAULT_PRESETS,
   DEFAULT_SOUND_SETTINGS,
   INITIAL_SPEECH_DRAFTS,
+  INITIAL_SOURCE_DOCUMENTS,
 } from './utils/constants';
 import {
   TimerPreset,
   SoundAlertSettings,
   SpeechDraft,
+  SourceDocument,
   RehearsalRecord,
+  AISpeechAnalysis,
 } from './types';
 import { useSpeechTimer, TimerStatus } from './hooks/useSpeechTimer';
 import { useVoiceRecorder, RecordedAudioResult } from './hooks/useVoiceRecorder';
@@ -18,20 +21,24 @@ import { TimerDisplay } from './components/TimerDisplay';
 import { TimerControls } from './components/TimerControls';
 import { VoiceRecorderWidget } from './components/VoiceRecorderWidget';
 import { SpeechTeleprompter } from './components/SpeechTeleprompter';
+import { FloatingAdaptableTimer } from './components/FloatingAdaptableTimer';
+import { DocumentReaderView } from './components/DocumentReaderView';
 import { SoundAlertsModal } from './components/SoundAlertsModal';
 import { RehearsalReviewModal } from './components/RehearsalReviewModal';
 import { RehearsalHistoryView } from './components/RehearsalHistoryView';
 import { ShortcutsGuideModal } from './components/ShortcutsGuideModal';
+import { SpeechCoachReportModal } from './components/SpeechCoachReportModal';
 
 export default function App() {
-  // Navigation / View State
-  const [currentView, setCurrentView] = useState<'split' | 'timer-only' | 'history'>('split');
+  // Navigation / View State - Default to 'reader-floating' matching user's uploaded screenshot!
+  const [currentView, setCurrentView] = useState<'reader-floating' | 'split' | 'timer-only' | 'history'>('reader-floating');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // Modals
   const [isSoundModalOpen, setIsSoundModalOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [isCoachReportOpen, setIsCoachReportOpen] = useState(false);
 
   // Sound Alert Settings
   const [soundSettings, setSoundSettings] = useState<SoundAlertSettings>(() => {
@@ -42,6 +49,20 @@ export default function App() {
       return DEFAULT_SOUND_SETTINGS;
     }
   });
+
+  // Source Documents / Outlines (Reading material)
+  const [documents, setDocuments] = useState<SourceDocument[]>(() => {
+    try {
+      const saved = localStorage.getItem('oratoriapro_documents');
+      return saved ? JSON.parse(saved) : INITIAL_SOURCE_DOCUMENTS;
+    } catch {
+      return INITIAL_SOURCE_DOCUMENTS;
+    }
+  });
+  const [currentDocId, setCurrentDocId] = useState<string>(() => {
+    return documents[0]?.id || 'doc-wanda-sample';
+  });
+  const currentDoc = documents.find((d) => d.id === currentDocId) || documents[0];
 
   // Speeches and drafts
   const [speeches, setSpeeches] = useState<SpeechDraft[]>(() => {
@@ -79,7 +100,13 @@ export default function App() {
     isOvertime: boolean;
     overtimeSeconds: number;
     recordedAudio: RecordedAudioResult | null;
+    aiAnalysis?: AISpeechAnalysis | null;
   } | null>(null);
+
+  // AI Coaching Analysis state
+  const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
+  const [activeAnalysis, setActiveAnalysis] = useState<AISpeechAnalysis | null>(null);
+  const [aiErrorMessage, setAiErrorMessage] = useState<string | null>(null);
 
   // Voice Recorder Hook
   const {
@@ -114,11 +141,7 @@ export default function App() {
   } = useSpeechTimer({
     initialSeconds,
     soundSettings,
-    onTimeExpired: () => {
-      // Notification when time expires
-    },
     onStateChange: (newStatus: TimerStatus) => {
-      // Synchronize voice recorder with timer actions if auto-record is enabled
       if (autoRecordEnabled) {
         if (newStatus === 'running') {
           if (!isRecording) {
@@ -135,20 +158,28 @@ export default function App() {
     },
   });
 
-  // Synchronize localStorage
+  // LocalStorage synchronizations
   useEffect(() => {
     try {
       localStorage.setItem('oratoriapro_sound_settings', JSON.stringify(soundSettings));
     } catch (e) {
-      console.warn('Could not save sound settings to localStorage', e);
+      console.warn('Could not save sound settings', e);
     }
   }, [soundSettings]);
 
   useEffect(() => {
     try {
+      localStorage.setItem('oratoriapro_documents', JSON.stringify(documents));
+    } catch (e) {
+      console.warn('Could not save documents', e);
+    }
+  }, [documents]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem('oratoriapro_speeches', JSON.stringify(speeches));
     } catch (e) {
-      console.warn('Could not save speeches to localStorage', e);
+      console.warn('Could not save speeches', e);
     }
   }, [speeches]);
 
@@ -156,11 +187,11 @@ export default function App() {
     try {
       localStorage.setItem('oratoriapro_rehearsals', JSON.stringify(rehearsals));
     } catch (e) {
-      console.warn('Could not save rehearsals to localStorage', e);
+      console.warn('Could not save rehearsals', e);
     }
   }, [rehearsals]);
 
-  // Fullscreen change listener
+  // Fullscreen listener
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -196,6 +227,38 @@ export default function App() {
     setTargetSeconds(totalSec);
   };
 
+  // Handler when a PDF or document is uploaded: reloads all sections in the Split Lectern View!
+  const handlePDFExtracted = (extractedData: any, pdfUrl?: string) => {
+    const newSpeechDraft: SpeechDraft = {
+      id: `speech_extracted_${Date.now()}`,
+      title: extractedData.title || 'Discurso desde Documento',
+      topic: 'Oratoria y Presentación',
+      targetSeconds: extractedData.suggestedTargetSeconds || 420,
+      sections:
+        extractedData.sections && extractedData.sections.length > 0
+          ? extractedData.sections
+          : [
+              {
+                id: 'sec-1',
+                title: '1. Introducción y Apertura',
+                estimatedMinutes: 1.5,
+                notes: extractedData.fullText?.slice(0, 300) || 'Puntos clave del documento...',
+              },
+            ],
+      fullText: extractedData.fullText || '',
+      lastEdited: Date.now(),
+    };
+
+    // Add or set as active speech
+    setSpeeches((prev) => [newSpeechDraft, ...prev]);
+    setActiveSpeechIndex(0);
+
+    // Update timer target seconds to match extracted suggestion
+    if (extractedData.suggestedTargetSeconds) {
+      setTargetSeconds(extractedData.suggestedTargetSeconds);
+    }
+  };
+
   // Finishing Rehearsal
   const handleFinishRehearsal = async () => {
     const finalElapsed = elapsedSeconds;
@@ -215,9 +278,80 @@ export default function App() {
       isOvertime: isOver,
       overtimeSeconds: finalOvertime,
       recordedAudio: recResult,
+      aiAnalysis: null,
     });
 
     setIsReviewModalOpen(true);
+  };
+
+  // AI Speech Coaching Handler
+  const handleRequestAIAnalysis = async () => {
+    if (!pendingReviewData) return;
+
+    setIsAnalyzingAI(true);
+    setAiErrorMessage(null);
+    setIsCoachReportOpen(true);
+
+    try {
+      let audioBase64: string | undefined = undefined;
+      const mimeType = pendingReviewData.recordedAudio?.blob.type || 'audio/webm';
+
+      if (pendingReviewData.recordedAudio?.blob) {
+        const reader = new FileReader();
+        audioBase64 = await new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            const base64 = dataUrl.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(pendingReviewData.recordedAudio!.blob);
+        });
+      }
+
+      const referenceSourceText =
+        currentView === 'reader-floating' && currentDoc
+          ? currentDoc.content
+          : currentSpeech.fullText ||
+            currentSpeech.sections.map((s) => `${s.title}: ${s.notes}`).join('\n');
+
+      const response = await fetch('/api/analyze-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          speechTitle:
+            currentView === 'reader-floating' && currentDoc
+              ? currentDoc.title
+              : currentSpeech.title,
+          targetSeconds: pendingReviewData.targetSeconds,
+          actualSeconds: pendingReviewData.actualSeconds,
+          referenceSourceText,
+          audioBase64,
+          audioMimeType: mimeType,
+          userNotes: '',
+        }),
+      });
+
+      const data = await response.json();
+      if (!data.success || !data.analysis) {
+        throw new Error(data.error || 'No se pudo obtener el análisis del entrenador.');
+      }
+
+      const completeAnalysis: AISpeechAnalysis = {
+        ...data.analysis,
+        analyzedAt: Date.now(),
+      };
+
+      setActiveAnalysis(completeAnalysis);
+      setPendingReviewData((prev) =>
+        prev ? { ...prev, aiAnalysis: completeAnalysis } : prev
+      );
+    } catch (err: any) {
+      console.error('AI Speech Analysis Error:', err);
+      setAiErrorMessage(err.message || 'Error al conectar con el entrenador de oratoria IA.');
+    } finally {
+      setIsAnalyzingAI(false);
+    }
   };
 
   // Save reviewed record into history and IndexedDB
@@ -241,11 +375,14 @@ export default function App() {
       id,
       timestamp: Date.now(),
       audioStorageKey: audioKey,
+      sourceTitle: currentDoc?.title,
+      aiAnalysis: pendingReviewData?.aiAnalysis || activeAnalysis || undefined,
     };
 
     setRehearsals((prev) => [newRecord, ...prev]);
     setIsReviewModalOpen(false);
     setPendingReviewData(null);
+    setActiveAnalysis(null);
     clearRecording();
     resetTimer();
   };
@@ -253,8 +390,29 @@ export default function App() {
   const handleDiscardReview = () => {
     setIsReviewModalOpen(false);
     setPendingReviewData(null);
+    setActiveAnalysis(null);
     clearRecording();
     resetTimer();
+  };
+
+  // Document management handlers
+  const handleAddDocument = (newDoc: SourceDocument) => {
+    setDocuments((prev) => [newDoc, ...prev]);
+    setCurrentDocId(newDoc.id);
+  };
+
+  const handleUpdateDocument = (updatedDoc: SourceDocument) => {
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d))
+    );
+  };
+
+  const handleDeleteDocument = (id: string) => {
+    setDocuments((prev) => prev.filter((d) => d.id !== id));
+    if (currentDocId === id && documents.length > 1) {
+      const remaining = documents.filter((d) => d.id !== id);
+      setCurrentDocId(remaining[0].id);
+    }
   };
 
   // Speech Update
@@ -267,7 +425,6 @@ export default function App() {
   // Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in text input, textarea, or contentEditable
       const target = e.target as HTMLElement;
       if (
         target.tagName === 'INPUT' ||
@@ -293,7 +450,8 @@ export default function App() {
         if (isSoundModalOpen) setIsSoundModalOpen(false);
         if (isShortcutsOpen) setIsShortcutsOpen(false);
         if (isReviewModalOpen) setIsReviewModalOpen(false);
-        if (currentView === 'history') setCurrentView('split');
+        if (isCoachReportOpen) setIsCoachReportOpen(false);
+        if (currentView === 'history') setCurrentView('reader-floating');
       }
     };
 
@@ -308,11 +466,12 @@ export default function App() {
     isSoundModalOpen,
     isShortcutsOpen,
     isReviewModalOpen,
+    isCoachReportOpen,
     currentView,
   ]);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-blue-600/30 selection:text-white">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans selection:bg-blue-600/30 selection:text-white relative">
       {/* Top Header */}
       <Header
         currentView={currentView}
@@ -325,16 +484,56 @@ export default function App() {
       />
 
       {/* Main View Area */}
-      <main className="flex-1 flex flex-col p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+      <main className="flex-1 flex flex-col p-3 sm:p-5 lg:p-6 max-w-7xl mx-auto w-full relative">
         {currentView === 'history' ? (
           <RehearsalHistoryView
             records={rehearsals}
             onDeleteRecord={(id) => setRehearsals((prev) => prev.filter((r) => r.id !== id))}
             onClearAll={() => setRehearsals([])}
-            onClose={() => setCurrentView('split')}
+            onClose={() => setCurrentView('reader-floating')}
+            onViewAIReport={(analysis, title) => {
+              setActiveAnalysis(analysis);
+              setIsCoachReportOpen(true);
+            }}
           />
+        ) : currentView === 'reader-floating' ? (
+          /* Lector de Bosquejo / PDF con Fondo Oscuro + Cronómetro Flotante Adaptable */
+          <div className="flex-1 flex flex-col relative w-full h-[calc(100vh-80px)] min-h-[550px]">
+            <DocumentReaderView
+              documents={documents}
+              currentDocId={currentDocId}
+              onSelectDocument={setCurrentDocId}
+              onAddDocument={handleAddDocument}
+              onUpdateDocument={handleUpdateDocument}
+              onDeleteDocument={handleDeleteDocument}
+              onPDFExtracted={handlePDFExtracted}
+              onGoToSplitView={() => setCurrentView('split')}
+            />
+
+            {/* The Adaptable Draggable Stopwatch/Timer Widget (matching user screenshot) */}
+            <FloatingAdaptableTimer
+              status={status}
+              remainingSeconds={remainingSeconds}
+              overtimeSeconds={overtimeSeconds}
+              targetSeconds={targetSeconds}
+              elapsedSeconds={elapsedSeconds}
+              onToggleTimer={toggleTimer}
+              onResetTimer={resetTimer}
+              onFinishRehearsal={handleFinishRehearsal}
+              onOpenSoundModal={() => setIsSoundModalOpen(true)}
+              isRecording={isRecording}
+            />
+
+            {/* Subtle floating voice recording activity pill */}
+            {isRecording && (
+              <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-1.5 bg-neutral-900/90 text-neutral-200 text-xs rounded-full border border-neutral-700 shadow-lg backdrop-blur-md">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span>Grabando voz ({micLevel}%)</span>
+              </div>
+            )}
+          </div>
         ) : currentView === 'timer-only' ? (
-          /* Solo Cronómetro / Modo Podio Enfocado */
+          /* Solo Cronómetro Enfocado */
           <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full py-6">
             <TimerDisplay
               remainingSeconds={remainingSeconds}
@@ -377,9 +576,8 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Modo Atril Dividido (Lectern Split View) */
+          /* Modo Atril Dividido (Muestra el contenido recargado del PDF/bosquejo junto al cronómetro) */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1">
-            {/* Left Panel: Digital Lectern Timer & Controls */}
             <div className="lg:col-span-6 xl:col-span-5 flex flex-col gap-6 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 sm:p-6 justify-between">
               <div>
                 <TimerDisplay
@@ -408,7 +606,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Integrated Voice Recorder Widget */}
               <div className="pt-4 border-t border-neutral-800/80">
                 <VoiceRecorderWidget
                   isRecording={isRecording}
@@ -426,13 +623,14 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Panel: Speech Teleprompter & Lectern Notes */}
+            {/* Panel Derecho: Contenido del archivo y Secciones Recargadas */}
             <div className="lg:col-span-6 xl:col-span-7 flex flex-col h-[650px] lg:h-auto min-h-[500px]">
               <SpeechTeleprompter
                 currentSpeech={currentSpeech}
                 onUpdateSpeech={handleUpdateCurrentSpeech}
                 isTimerRunning={status === 'running' || status === 'overtime'}
                 onSelectTemplate={() => {}}
+                activePdfUrl={currentDoc?.pdfUrl}
               />
             </div>
           </div>
@@ -455,7 +653,11 @@ export default function App() {
       {pendingReviewData && (
         <RehearsalReviewModal
           isOpen={isReviewModalOpen}
-          speechTitle={currentSpeech.title}
+          speechTitle={
+            currentView === 'reader-floating' && currentDoc
+              ? currentDoc.title
+              : currentSpeech.title
+          }
           targetSeconds={pendingReviewData.targetSeconds}
           actualSeconds={pendingReviewData.actualSeconds}
           isOvertime={pendingReviewData.isOvertime}
@@ -463,8 +665,26 @@ export default function App() {
           recordedAudio={pendingReviewData.recordedAudio}
           onSaveRecord={handleSaveReviewedRecord}
           onDiscard={handleDiscardReview}
+          onRequestAIAnalysis={handleRequestAIAnalysis}
+          aiAnalysis={pendingReviewData.aiAnalysis || activeAnalysis}
+          isAnalyzingAI={isAnalyzingAI}
         />
       )}
+
+      {/* AI Speech Coach Report Modal */}
+      <SpeechCoachReportModal
+        isOpen={isCoachReportOpen}
+        onClose={() => setIsCoachReportOpen(false)}
+        analysis={activeAnalysis}
+        isLoading={isAnalyzingAI}
+        errorMessage={aiErrorMessage}
+        onRetry={handleRequestAIAnalysis}
+        speechTitle={
+          currentView === 'reader-floating' && currentDoc
+            ? currentDoc.title
+            : currentSpeech.title
+        }
+      />
     </div>
   );
 }

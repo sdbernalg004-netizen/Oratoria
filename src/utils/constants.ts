@@ -1,4 +1,4 @@
-import { TimerPreset, SoundAlertSettings, SpeechDraft } from '../types';
+import { TimerPreset, SoundAlertSettings, SpeechDraft, SourceDocument } from '../types';
 
 export const DEFAULT_PRESETS: TimerPreset[] = [
   {
@@ -107,5 +107,68 @@ export const INITIAL_SPEECH_DRAFTS: SpeechDraft[] = [
 Buenos días a todos. Hace cinco años me encontraba frente a una junta directiva. Tenía 40 diapositivas y tres minutos para convencerlos. Empecé a recitar números... y vi cómo uno a uno bajaban la mirada hacia sus teléfonos. En ese instante comprendí que hablar con datos sin emoción es como encender una vela en medio de una tormenta.
 
 Hoy quiero compartir con ustedes cómo transformar ideas complejas en relatos inolvidables. Porque cuando comunicamos desde la historia, no solo transmitimos información: creamos una experiencia compartida.`,
+  },
+];
+
+export const INITIAL_SOURCE_DOCUMENTS: SourceDocument[] = [
+  {
+    id: 'doc-wanda-sample',
+    title: 'S-34_S_104 con anotaciones',
+    type: 'text',
+    theme: 'dark',
+    fontSize: 22,
+    lineHeight: 1.7,
+    currentPage: 24,
+    totalPages: 28,
+    content: `que él era incrédulo, ¿cómo obraría Wanda cuando su madre no estuviera presente?
+
+Al principio Wanda lloraba antes de dormirse. Entonces recordó el consejo de su madre de llevar sus problemas a Jehová en oración. Oró y pronto pensó en examinar la guía telefónica para ver si había testigos de Jehová en aquella zona. Se comunicó con ellos y se enteró de que una familia de Testigos vivía cerca de la casa de su padre. "¡Qué contenta me puse!", dice Wanda. Con el ánimo que recibió de esta familia, Wanda pudo ayudar a su hermano y su hermana menores a reactivarse en el servicio cristiano.
+
+Ella se encargaba de que estuviéramos preparados para las reuniones —recuerda—. Tenía que lavar la ropa, ver que estuviéramos peinados y asegurarme de que estuviéramos limpios y presentables. Era trabajo duro para una joven, pero lo hizo. En cierta ocasión el padre trató de impedir que fueran a la reunión dominical, pero la determinación y el respeto de los hijos conmovieron su corazón.`,
+    pages: [
+      `que él era incrédulo, ¿cómo obraría Wanda cuando su madre no estuviera presente?
+
+Al principio Wanda lloraba antes de dormirse. Entonces recordó el consejo de su madre de llevar sus problemas a Jehová en oración. Oró y pronto pensó en examinar la guía telefónica para ver si había testigos de Jehová en aquella zona. Se comunicó con ellos y se enteró de que una familia de Testigos vivía cerca de la casa de su padre. "¡Qué contenta me puse!", dice Wanda. Con el ánimo que recibió de esta familia, Wanda pudo ayudar a su hermano y su hermana menores a reactivarse en el servicio cristiano.
+
+Ella se encargaba de que estuviéramos preparados para las reuniones —recuerda—. Tenía que lavar la ropa, ver que estuviéramos peinados y asegurarme de que estuviéramos limpios y presentables. Era trabajo duro para una joven, pero lo hizo. En cierta ocasión el padre trató de impedir que fueran a la reunión dominical, pero la determinación y el respeto de los hijos conmovieron su corazón.`,
+      `El ejemplo de perseverancia y fe viva:
+1. La importancia de la oración constante ante la incertidumbre.
+2. Cómo buscar apoyo espiritual en la comunidad local.
+3. El cuidado de los más jóvenes con amor y paciencia.
+4. Aplicación práctica: No desmayar cuando las circunstancias familiares sean desafiantes.
+
+Puntos para enfatizar en la oratoria:
+• Modulación suave y empática al relatar el sufrimiento inicial de Wanda.
+• Aumento del brillo vocal y entusiasmo al pronunciar: "¡Qué contenta me puse!".
+• Pausa tras la pregunta reflexiva para permitir que la congregación medite en la lección.`,
+    ],
+  },
+  {
+    id: 'doc-bosquejo-oratoria',
+    title: 'Bosquejo General de Discurso Público',
+    type: 'outline',
+    theme: 'white',
+    fontSize: 20,
+    lineHeight: 1.6,
+    currentPage: 1,
+    totalPages: 3,
+    content: `I. INTRODUCCIÓN (Tiempo sugerido: 1:30)
+• Ilustración inicial: El valor de un buen cimiento.
+• Pregunta de sondeo al auditorio: ¿Qué hace que una decisión sea verdaderamente sabia?
+• Lectura del texto temático principal.
+
+II. CUERPO DEL DISCURSO (Tiempo sugerido: 5:00)
+A. Primer punto principal: Reconocer los peligros del desánimo.
+   - Datos prácticos y ejemplo de la vida real.
+   - Conexión con la audiencia: Todos enfrentamos presiones similares.
+B. Segundo punto principal: Pasos concretos para actuar con confianza.
+   - 1. Evaluar objetivamente la situación.
+   - 2. Buscar consejo fidedigno.
+   - 3. Mantener una actitud paciente y perseverante.
+
+III. CONCLUSIÓN (Tiempo sugerido: 1:30)
+• Resumen en dos oraciones claras.
+• Exhortación final: Aplicar el principio desde hoy mismo.
+• Agradecimiento y cierre con firmeza.`,
   },
 ];
