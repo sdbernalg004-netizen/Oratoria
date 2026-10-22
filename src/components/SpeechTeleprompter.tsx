@@ -14,6 +14,10 @@ import {
   Clock,
   Sparkles,
   ChevronRight,
+  Layers,
+  LayoutGrid,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 
 interface SpeechTeleprompterProps {
@@ -24,6 +28,8 @@ interface SpeechTeleprompterProps {
   activePdfUrl?: string;
   onUploadFile?: (file: File) => void;
   isProcessingFile?: boolean;
+  atrilTimerMode?: 'standard' | 'compact' | 'floating';
+  onSetAtrilTimerMode?: (mode: 'standard' | 'compact' | 'floating') => void;
 }
 
 export const SpeechTeleprompter: React.FC<SpeechTeleprompterProps> = ({
@@ -33,6 +39,8 @@ export const SpeechTeleprompter: React.FC<SpeechTeleprompterProps> = ({
   activePdfUrl,
   onUploadFile,
   isProcessingFile = false,
+  atrilTimerMode = 'standard',
+  onSetAtrilTimerMode,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [fontSize, setFontSize] = useState<number>(18);
@@ -215,10 +223,49 @@ export const SpeechTeleprompter: React.FC<SpeechTeleprompterProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.txt,.md"
+              accept=".pdf,.docx,.doc,.txt,.md"
               onChange={handleFileInputChange}
               className="hidden"
             />
+          </div>
+        )}
+
+        {/* Layout size mode toggle: Normal, Compacto, Flotante (Texto 100%) */}
+        {onSetAtrilTimerMode && (
+          <div className="flex items-center gap-1 bg-neutral-900 p-1 rounded-lg border border-neutral-800">
+            {atrilTimerMode === 'floating' ? (
+              <button
+                onClick={() => onSetAtrilTimerMode('standard')}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-blue-200 hover:text-white transition-colors"
+                title="Volver a mostrar el cronómetro a la izquierda"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Fijar Cronómetro</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => onSetAtrilTimerMode(atrilTimerMode === 'compact' ? 'standard' : 'compact')}
+                  className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                    atrilTimerMode === 'compact'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-neutral-400 hover:text-white'
+                  }`}
+                  title={atrilTimerMode === 'compact' ? 'Volver a cronómetro normal' : 'Hacer cronómetro más pequeño para ganar más espacio de texto'}
+                >
+                  <Minimize2 className="w-3 h-3" />
+                  <span className="hidden sm:inline">{atrilTimerMode === 'compact' ? 'Normal' : 'Texto +30%'}</span>
+                </button>
+                <button
+                  onClick={() => onSetAtrilTimerMode('floating')}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-purple-950/40 hover:bg-purple-900/40 border border-purple-700/50 text-purple-300 hover:text-white transition-colors"
+                  title="Expandir texto al 100% de la pantalla y usar cronómetro flotante pequeño"
+                >
+                  <Layers className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="hidden sm:inline">Texto 100% (Flotante)</span>
+                </button>
+              </>
+            )}
           </div>
         )}
 

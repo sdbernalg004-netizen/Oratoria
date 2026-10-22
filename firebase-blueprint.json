@@ -20,6 +20,10 @@
           "maxLength": 500,
           "description": "Avatar URL of the user"
         },
+        "isJehovahsWitness": {
+          "type": "boolean",
+          "description": "Whether the user customizes speech training based on the Benefíciese book from jw.org"
+        },
         "createdAt": {
           "type": "string",
           "maxLength": 50,

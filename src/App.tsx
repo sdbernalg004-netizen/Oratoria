@@ -24,6 +24,8 @@ import {
   subscribeToUserSpeeches,
   saveRehearsalLog,
   subscribeToUserRehearsals,
+  getUserProfile,
+  updateUserJwStatus,
 } from './services/speechCloudService';
 import { Header } from './components/Header';
 import { TimerDisplay } from './components/TimerDisplay';
@@ -38,8 +40,9 @@ import { RehearsalHistoryView } from './components/RehearsalHistoryView';
 import { ShortcutsGuideModal } from './components/ShortcutsGuideModal';
 import { SpeechCoachReportModal } from './components/SpeechCoachReportModal';
 import { SavedSpeechesModal } from './components/SavedSpeechesModal';
+import { JwAffiliationModal } from './components/JwAffiliationModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { Cloud, Check, AlertCircle } from 'lucide-react';
+import { Cloud, Check, AlertCircle, Clock, Layers, LayoutGrid, Minimize2, Maximize2 } from 'lucide-react';
 
 export default function App() {
   const { user } = useAuth();
@@ -48,12 +51,56 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'reader-floating' | 'split' | 'timer-only' | 'history'>('split');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
+  // Atril Dividido layout mode: 'standard' (5 cols) | 'compact' (3 cols) | 'floating' (small floating timer, 100% text)
+  const [atrilTimerMode, setAtrilTimerMode] = useState<'standard' | 'compact' | 'floating'>(() => {
+    try {
+      const saved = localStorage.getItem('oratoriapro_atril_timer_mode');
+      return (saved as 'standard' | 'compact' | 'floating') || 'standard';
+    } catch {
+      return 'standard';
+    }
+  });
+
+  // Auto-switch to small floating timer upon starting speech in Atril Dividido
+  const [autoFloatOnStart, setAutoFloatOnStart] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('oratoriapro_autofloat_on_start');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('oratoriapro_atril_timer_mode', atrilTimerMode);
+    } catch {}
+  }, [atrilTimerMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('oratoriapro_autofloat_on_start', JSON.stringify(autoFloatOnStart));
+    } catch {}
+  }, [autoFloatOnStart]);
+
   // Modals
   const [isSoundModalOpen, setIsSoundModalOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isCoachReportOpen, setIsCoachReportOpen] = useState(false);
   const [isSavedSpeechesOpen, setIsSavedSpeechesOpen] = useState(false);
+  const [isJwModalOpen, setIsJwModalOpen] = useState(false);
+  const [isJwPromptFirstTime, setIsJwPromptFirstTime] = useState(false);
+
+  // JW Theocratic Ministry School Oratory Affiliation ("Benefíciese" book vs General)
+  const [isJehovahsWitness, setIsJehovahsWitness] = useState<boolean | null>(() => {
+    try {
+      const saved = localStorage.getItem('oratoriapro_is_jw');
+      return saved !== null ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Notification Toast
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -64,6 +111,49 @@ export default function App() {
       setToastMessage((curr) => (curr?.text === text ? null : curr));
     }, 4500);
   }, []);
+
+  // When user signs in, check if they already answered the JW affiliation question
+  useEffect(() => {
+    if (!user) return;
+    getUserProfile(user.uid)
+      .then((profile) => {
+        if (profile && typeof profile.isJehovahsWitness === 'boolean') {
+          setIsJehovahsWitness(profile.isJehovahsWitness);
+          try {
+            localStorage.setItem('oratoriapro_is_jw', JSON.stringify(profile.isJehovahsWitness));
+          } catch {}
+        } else {
+          // If preference has not yet been set in profile or locally, open the prompt upon login!
+          const localVal = localStorage.getItem('oratoriapro_is_jw');
+          if (localVal === null) {
+            setIsJwPromptFirstTime(true);
+            setIsJwModalOpen(true);
+          }
+        }
+      })
+      .catch((err) => console.warn('Error reading user profile for JW preference:', err));
+  }, [user]);
+
+  const handleSelectJwAffiliation = async (isJw: boolean) => {
+    setIsJehovahsWitness(isJw);
+    try {
+      localStorage.setItem('oratoriapro_is_jw', JSON.stringify(isJw));
+    } catch {}
+
+    if (user) {
+      try {
+        await updateUserJwStatus(user.uid, isJw);
+      } catch (err) {
+        console.warn('Error updating JW preference in Firestore:', err);
+      }
+    }
+
+    if (isJw) {
+      showToast('Enfoque activado: Libro «Benefíciese de la Escuela del Ministerio Teocrático» (jw.org)', 'success');
+    } else {
+      showToast('Enfoque activado: Técnicas universales de oratoria contemporánea y Toastmasters', 'info');
+    }
+  };
 
   // File uploading and extraction state
   const [isUploadingToAtril, setIsUploadingToAtril] = useState(false);
@@ -170,6 +260,12 @@ export default function App() {
     initialSeconds,
     soundSettings,
     onStateChange: (newStatus: TimerStatus) => {
+      // Auto-switch to floating timer upon starting in Atril Dividido so user gets maximum reading space
+      if (newStatus === 'running' && currentView === 'split' && autoFloatOnStart && atrilTimerMode === 'standard') {
+        setAtrilTimerMode('floating');
+        showToast('Cronómetro reducido a flotante. ¡Texto de oratoria ampliado al 100%!', 'info');
+      }
+
       if (autoRecordEnabled) {
         if (newStatus === 'running') {
           if (!isRecording) {
@@ -679,6 +775,7 @@ export default function App() {
           audioBase64,
           audioMimeType: mimeType,
           userNotes: '',
+          isJehovahsWitness: isJehovahsWitness ?? false,
         }),
       });
 
@@ -854,6 +951,11 @@ export default function App() {
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
         historyCount={rehearsals.length}
+        isJehovahsWitness={isJehovahsWitness}
+        onOpenJwModal={() => {
+          setIsJwPromptFirstTime(false);
+          setIsJwModalOpen(true);
+        }}
       />
 
       {/* Cloud feedback toast */}
@@ -902,6 +1004,8 @@ export default function App() {
               onUploadFile={handleUploadAndExtractFile}
               isProcessingFile={isUploadingToAtril}
               onGoToSplitView={() => setCurrentView('split')}
+              currentSpeech={currentSpeech}
+              onUpdateSpeech={handleUpdateCurrentSpeech}
             />
 
             {/* The Adaptable Draggable Stopwatch/Timer Widget */}
@@ -969,65 +1073,193 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Modo Atril Dividido: Secciones y Puntos Claves Recargados del PDF con Cronómetro */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1">
-            <div className="lg:col-span-6 xl:col-span-5 flex flex-col gap-6 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-5 sm:p-6 justify-between">
-              <div>
-                <TimerDisplay
-                  remainingSeconds={remainingSeconds}
-                  overtimeSeconds={overtimeSeconds}
-                  targetSeconds={targetSeconds}
-                  elapsedSeconds={elapsedSeconds}
-                  status={status}
-                  progressPercent={progressPercent}
-                  onAddSeconds={addSeconds}
-                  isCompact={false}
-                />
-
-                <div className="mt-4">
-                  <TimerControls
-                    status={status}
-                    presets={DEFAULT_PRESETS}
-                    activePresetId={activePresetId}
-                    onSelectPreset={handleSelectPreset}
-                    onSetCustomTime={handleSetCustomTime}
-                    onToggleTimer={toggleTimer}
-                    onResetTimer={resetTimer}
-                    onFinishRehearsal={handleFinishRehearsal}
-                    isRecording={isRecording}
-                  />
+          /* Modo Atril Dividido: Secciones y Puntos Claves con Cronómetro Redimensionable o Flotante */
+          <div className="flex flex-col flex-1 gap-4">
+            {/* Aviso superior cuando el cronómetro está en modo flotante */}
+            {atrilTimerMode === 'floating' && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-neutral-900/90 border border-neutral-800 rounded-2xl text-xs text-neutral-300 shadow-lg">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
+                  <span className="font-semibold text-white">Cronómetro Flotante Pequeño Activo</span>
+                  <span className="text-neutral-400 hidden md:inline">
+                    · El bosquejo y puntos de la oratoria disfrutan del 100% del ancho de pantalla
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setAtrilTimerMode('compact')}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-lg border border-neutral-700 text-xs transition-colors"
+                    title="Ver cronómetro en barra lateral compacta"
+                  >
+                    <Minimize2 className="w-3 h-3" />
+                    <span>Modo Compacto</span>
+                  </button>
+                  <button
+                    onClick={() => setAtrilTimerMode('standard')}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/40 text-blue-200 hover:text-white rounded-lg text-xs font-semibold transition-colors"
+                    title="Fijar el cronómetro a la izquierda del atril"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Fijar Cronómetro al Atril</span>
+                  </button>
                 </div>
               </div>
+            )}
 
-              <div className="pt-4 border-t border-neutral-800/80">
-                <VoiceRecorderWidget
-                  isRecording={isRecording}
-                  isPaused={isRecPaused}
-                  micLevel={micLevel}
-                  hasPermission={hasPermission}
-                  errorMessage={micError}
-                  autoRecordEnabled={autoRecordEnabled}
-                  onToggleAutoRecord={setAutoRecordEnabled}
-                  recordedAudio={recordedAudio}
-                  onClearRecording={clearRecording}
-                  onManualRecordToggle={() => (isRecording ? stopRecording() : startRecording())}
-                  onRequestPermission={requestPermission}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1">
+              {/* Columna Cronómetro (solo se muestra cuando NO está en modo flotante) */}
+              {atrilTimerMode !== 'floating' && (
+                <div
+                  className={`${
+                    atrilTimerMode === 'compact'
+                      ? 'lg:col-span-4 xl:col-span-3'
+                      : 'lg:col-span-6 xl:col-span-5'
+                  } flex flex-col gap-4 bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-4 sm:p-5 justify-between transition-all duration-300`}
+                >
+                  <div>
+                    {/* Barra de título del cronómetro con botones de tamaño */}
+                    <div className="flex items-center justify-between pb-3 border-b border-neutral-800/80 mb-3">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-blue-400" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-neutral-300">
+                          {atrilTimerMode === 'compact' ? 'Cronómetro (Pequeño)' : 'Cronómetro'}
+                        </span>
+                      </div>
+
+                      {/* Selectores de tamaño y modo */}
+                      <div className="flex items-center gap-1 bg-neutral-950/70 p-0.5 rounded-lg border border-neutral-800">
+                        <button
+                          onClick={() => setAtrilTimerMode('standard')}
+                          className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${
+                            atrilTimerMode === 'standard'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-neutral-400 hover:text-white'
+                          }`}
+                          title="Tamaño normal equilibrado"
+                        >
+                          Normal
+                        </button>
+                        <button
+                          onClick={() => setAtrilTimerMode('compact')}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md font-medium transition-colors ${
+                            atrilTimerMode === 'compact'
+                              ? 'bg-blue-600 text-white'
+                              : 'text-neutral-400 hover:text-white'
+                          }`}
+                          title="Hacer más pequeño el cronómetro (Más espacio para el texto de oratoria)"
+                        >
+                          <Minimize2 className="w-3 h-3" />
+                          <span>Pequeño</span>
+                        </button>
+                        <button
+                          onClick={() => setAtrilTimerMode('floating')}
+                          className="flex items-center gap-1 px-2 py-1 text-xs rounded-md font-medium text-purple-300 hover:text-white hover:bg-purple-950/40 transition-colors"
+                          title="Convertir en cronómetro flotante pequeño (100% ancho para bosquejo)"
+                        >
+                          <Layers className="w-3 h-3 text-purple-400" />
+                          <span>Flotante</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <TimerDisplay
+                      remainingSeconds={remainingSeconds}
+                      overtimeSeconds={overtimeSeconds}
+                      targetSeconds={targetSeconds}
+                      elapsedSeconds={elapsedSeconds}
+                      status={status}
+                      progressPercent={progressPercent}
+                      onAddSeconds={addSeconds}
+                      isCompact={atrilTimerMode === 'compact'}
+                    />
+
+                    <div className="mt-3">
+                      <TimerControls
+                        status={status}
+                        presets={DEFAULT_PRESETS}
+                        activePresetId={activePresetId}
+                        onSelectPreset={handleSelectPreset}
+                        onSetCustomTime={handleSetCustomTime}
+                        onToggleTimer={toggleTimer}
+                        onResetTimer={resetTimer}
+                        onFinishRehearsal={handleFinishRehearsal}
+                        isRecording={isRecording}
+                        isCompact={atrilTimerMode === 'compact'}
+                      />
+                    </div>
+
+                    {/* Switch: Al dar inicio, pasar a flotante pequeño */}
+                    <div className="mt-4 pt-3 border-t border-neutral-800/60">
+                      <label className="flex items-center gap-2 text-xs text-neutral-400 cursor-pointer select-none hover:text-neutral-200 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={autoFloatOnStart}
+                          onChange={(e) => setAutoFloatOnStart(e.target.checked)}
+                          className="rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-0 w-3.5 h-3.5"
+                        />
+                        <span>Al pulsar <strong>Iniciar</strong>: pasar a flotante pequeño automáticamente</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-neutral-800/80">
+                    <VoiceRecorderWidget
+                      isRecording={isRecording}
+                      isPaused={isRecPaused}
+                      micLevel={micLevel}
+                      hasPermission={hasPermission}
+                      errorMessage={micError}
+                      autoRecordEnabled={autoRecordEnabled}
+                      onToggleAutoRecord={setAutoRecordEnabled}
+                      recordedAudio={recordedAudio}
+                      onClearRecording={clearRecording}
+                      onManualRecordToggle={() => (isRecording ? stopRecording() : startRecording())}
+                      onRequestPermission={requestPermission}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Panel de Texto y Puntos de Oratoria: se expande a 12 cols si es flotante, 9 cols si es compacto, 7 cols si es standard */}
+              <div
+                className={`${
+                  atrilTimerMode === 'floating'
+                    ? 'col-span-12'
+                    : atrilTimerMode === 'compact'
+                    ? 'lg:col-span-8 xl:col-span-9'
+                    : 'lg:col-span-6 xl:col-span-7'
+                } flex flex-col h-[650px] lg:h-auto min-h-[500px] transition-all duration-300`}
+              >
+                <SpeechTeleprompter
+                  currentSpeech={currentSpeech}
+                  onUpdateSpeech={handleUpdateCurrentSpeech}
+                  isTimerRunning={status === 'running' || status === 'overtime'}
+                  onSelectTemplate={() => {}}
+                  activePdfUrl={currentDoc?.pdfUrl}
+                  onUploadFile={handleUploadAndExtractFile}
+                  isProcessingFile={isUploadingToAtril}
+                  atrilTimerMode={atrilTimerMode}
+                  onSetAtrilTimerMode={setAtrilTimerMode}
                 />
               </div>
             </div>
 
-            {/* Panel Derecho: Secciones y Puntos Claves con Botón de Carga Directa */}
-            <div className="lg:col-span-6 xl:col-span-7 flex flex-col h-[650px] lg:h-auto min-h-[500px]">
-              <SpeechTeleprompter
-                currentSpeech={currentSpeech}
-                onUpdateSpeech={handleUpdateCurrentSpeech}
-                isTimerRunning={status === 'running' || status === 'overtime'}
-                onSelectTemplate={() => {}}
-                activePdfUrl={currentDoc?.pdfUrl}
-                onUploadFile={handleUploadAndExtractFile}
-                isProcessingFile={isUploadingToAtril}
+            {/* Widget de cronómetro flotante pequeño en pantalla cuando atrilTimerMode === 'floating' */}
+            {atrilTimerMode === 'floating' && (
+              <FloatingAdaptableTimer
+                status={status}
+                remainingSeconds={remainingSeconds}
+                overtimeSeconds={overtimeSeconds}
+                targetSeconds={targetSeconds}
+                elapsedSeconds={elapsedSeconds}
+                onToggleTimer={toggleTimer}
+                onResetTimer={resetTimer}
+                onFinishRehearsal={handleFinishRehearsal}
+                onOpenSoundModal={() => setIsSoundModalOpen(true)}
+                isRecording={isRecording}
+                onDockToSide={() => setAtrilTimerMode('standard')}
               />
-            </div>
+            )}
           </div>
         )}
       </main>
@@ -1092,6 +1324,15 @@ export default function App() {
         errorMessage={aiErrorMessage}
         onRetry={handleRequestAIAnalysis}
         speechTitle={currentSpeech.title}
+      />
+
+      {/* JW Theocratic Ministry School Affiliation & Privacy Modal */}
+      <JwAffiliationModal
+        isOpen={isJwModalOpen}
+        onClose={() => setIsJwModalOpen(false)}
+        currentValue={isJehovahsWitness}
+        onSelectAffiliation={handleSelectJwAffiliation}
+        isFirstTimePrompt={isJwPromptFirstTime}
       />
 
       {/* Offline Status Indicator */}

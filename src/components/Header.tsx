@@ -27,6 +27,8 @@ interface HeaderProps {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   historyCount: number;
+  isJehovahsWitness?: boolean | null;
+  onOpenJwModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +41,8 @@ export const Header: React.FC<HeaderProps> = ({
   isFullscreen,
   onToggleFullscreen,
   historyCount,
+  isJehovahsWitness,
+  onOpenJwModal,
 }) => {
   const { user, loading, signIn, signOut } = useAuth();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -155,6 +159,18 @@ export const Header: React.FC<HeaderProps> = ({
         {/* PWA Install Button */}
         <PWAInstallButton />
 
+        {/* Oratory Focus Badge / Switcher */}
+        {onOpenJwModal && (
+          <button
+            onClick={onOpenJwModal}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-900/80 hover:bg-neutral-800 border border-neutral-800 text-[11px] text-neutral-300 hover:text-white transition-colors"
+            title="Configurar fuente de consejos (Libro Benefíciese de jw.org u Oratoria General)"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+            <span>{isJehovahsWitness ? 'Benefíciese (JW)' : 'Oratoria General'}</span>
+          </button>
+        )}
+
         {/* Shortcuts Guide */}
         <button
           onClick={onOpenShortcuts}
@@ -244,6 +260,28 @@ export const Header: React.FC<HeaderProps> = ({
                     <History className="w-3.5 h-3.5 text-neutral-400" />
                     <span>Historial de Ensayos</span>
                   </button>
+
+                  {onOpenJwModal && (
+                    <button
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        onOpenJwModal();
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs text-neutral-300 hover:text-white hover:bg-neutral-800/80 flex items-center justify-between transition-colors border-t border-neutral-800/60"
+                    >
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Enfoque de Oratoria</span>
+                      </div>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        isJehovahsWitness
+                          ? 'bg-blue-900/60 text-blue-300 border border-blue-700/50'
+                          : 'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        {isJehovahsWitness ? 'Benefíciese' : 'General'}
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="pt-1 mt-1 border-t border-neutral-800/80">

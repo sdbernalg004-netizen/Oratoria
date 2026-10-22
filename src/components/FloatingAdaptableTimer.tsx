@@ -12,6 +12,7 @@ import {
   Eye,
   CornerDownLeft,
   CornerDownRight,
+  LayoutGrid,
 } from 'lucide-react';
 import { TimerStatus } from '../hooks/useSpeechTimer';
 
@@ -26,6 +27,7 @@ interface FloatingAdaptableTimerProps {
   onFinishRehearsal: () => void;
   onOpenSoundModal?: () => void;
   isRecording?: boolean;
+  onDockToSide?: () => void;
 }
 
 export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
@@ -39,6 +41,7 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
   onFinishRehearsal,
   onOpenSoundModal,
   isRecording = false,
+  onDockToSide,
 }) => {
   // Mode: 'cronometro' (count-up stopwatch) or 'temporizador' (countdown timer)
   const [timerMode, setTimerMode] = useState<'cronometro' | 'temporizador'>('temporizador');
@@ -219,6 +222,16 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
           >
             <Maximize2 className="w-3 h-3" />
           </button>
+
+          {onDockToSide && (
+            <button
+              onClick={onDockToSide}
+              className="p-1 text-neutral-400 hover:text-blue-400"
+              title="Fijar cronómetro al panel lateral del atril"
+            >
+              <LayoutGrid className="w-3 h-3" />
+            </button>
+          )}
         </div>
       ) : (
         /* Standard Floating Widget (Exact UI structure as Samsung / Android floating timer in screenshot) */
@@ -238,6 +251,16 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
 
             {/* Top window controls */}
             <div className="flex items-center gap-1">
+              {onDockToSide && (
+                <button
+                  onClick={onDockToSide}
+                  className="p-1 text-neutral-400 hover:text-blue-400 transition-colors"
+                  title="Fijar cronómetro al panel lateral del atril"
+                >
+                  <LayoutGrid className="w-3 h-3" />
+                </button>
+              )}
+
               <button
                 onClick={() => setShowOpacitySlider((prev) => !prev)}
                 className="p-1 hover:text-white transition-colors"

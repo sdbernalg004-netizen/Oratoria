@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   query,
@@ -48,16 +49,55 @@ export async function syncUserProfile(user: {
   displayName: string | null;
   email: string | null;
   photoURL: string | null;
+  isJehovahsWitness?: boolean;
 }) {
   const userPath = `users/${user.uid}`;
   try {
     const userDocRef = doc(db, 'users', user.uid);
+    const payload: Record<string, unknown> = {
+      displayName: user.displayName || 'Orador',
+      email: user.email || '',
+      photoURL: user.photoURL || '',
+      updatedAt: new Date().toISOString(),
+    };
+    if (typeof user.isJehovahsWitness === 'boolean') {
+      payload.isJehovahsWitness = user.isJehovahsWitness;
+    }
+    await setDoc(userDocRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, userPath);
+  }
+}
+
+// Retrieve user profile to check JW oratory preferences
+export async function getUserProfile(userId: string): Promise<{
+  displayName?: string;
+  email?: string;
+  isJehovahsWitness?: boolean;
+} | null> {
+  const userPath = `users/${userId}`;
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    const snap = await getDoc(userDocRef);
+    if (snap.exists()) {
+      return snap.data() as any;
+    }
+    return null;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, userPath);
+    return null;
+  }
+}
+
+// Update JW affiliation status for speech counsel personalization
+export async function updateUserJwStatus(userId: string, isJehovahsWitness: boolean): Promise<void> {
+  const userPath = `users/${userId}`;
+  try {
+    const userDocRef = doc(db, 'users', userId);
     await setDoc(
       userDocRef,
       {
-        displayName: user.displayName || 'Orador',
-        email: user.email || '',
-        photoURL: user.photoURL || '',
+        isJehovahsWitness,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }

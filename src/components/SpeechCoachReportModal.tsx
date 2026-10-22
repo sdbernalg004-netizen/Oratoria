@@ -11,6 +11,8 @@ import {
   BookOpen,
   Dumbbell,
   Download,
+  ExternalLink,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SpeechCoachReportModalProps {
@@ -99,6 +101,51 @@ export const SpeechCoachReportModal: React.FC<SpeechCoachReportModalProps> = ({
 
           {analysis && !isLoading && (
             <div className="space-y-6">
+              {/* Oratory Source & Privacy Reassurance */}
+              {analysis.isJwCounsel ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-blue-950/40 border border-blue-800/50 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-blue-600/30 text-blue-300">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">Consejos de Oratoria Teocrática</span>
+                        <span className="px-2 py-0.5 rounded-full bg-blue-900/80 text-blue-300 text-[10px] font-semibold border border-blue-700/60">
+                          Libro Benefíciese (JW.ORG)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-300 mt-0.5">
+                        Consejos basados en las 53 lecciones de oratoria y enseñanza de <em>«Benefíciese de la Escuela del Ministerio Teocrático»</em>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="https://www.jw.org/es/biblioteca/libros/Benef%C3%ADciese-de-la-Escuela-del-Ministerio-Teocr%C3%A1tico/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 hover:text-white rounded-lg border border-blue-500/40 text-xs font-medium transition-colors"
+                    >
+                      <span>Consultar libro en jw.org</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-950/60 border border-neutral-800 text-xs text-neutral-400">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-purple-400" />
+                    <span>Consejos de oratoria profesional general (Toastmasters, TED y comunicación pública)</span>
+                  </div>
+                  <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Uso personal confidencial</span>
+                  </span>
+                </div>
+              )}
+
               {/* Score & Executive Summary */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-5 bg-neutral-950 rounded-2xl border border-neutral-800 items-center">
                 <div className="sm:col-span-1 flex flex-col items-center justify-center text-center p-2 border-b sm:border-b-0 sm:border-r border-neutral-800">

@@ -39,20 +39,55 @@ app.post('/api/analyze-speech', async (req, res) => {
       audioBase64,
       audioMimeType = 'audio/webm',
       userNotes,
+      isJehovahsWitness = false,
     } = req.body;
 
     const delta = actualSeconds - targetSeconds;
     const isOvertime = delta > 0;
     const timeSummary = `Tiempo objetivo: ${Math.floor(targetSeconds / 60)}m ${targetSeconds % 60}s. Tiempo logrado: ${Math.floor(actualSeconds / 60)}m ${actualSeconds % 60}s (${isOvertime ? `Excedido por +${delta}s` : `Completado con ${Math.abs(delta)}s de anticipación`}).`;
 
+    const jwCounselGuide = isJehovahsWitness
+      ? `
+MARCO DE CONSEJO Y ENTRENAMIENTO DE ORATORIA:
+El orador es Testigo de Jehová. Por solicitud explícita, debes actuar como un consejero de oratoria teocrática cristiana basado en el libro oficial de estudio:
+"Benefíciese de la Escuela del Ministerio Teocrático" (disponible en jw.org: https://www.jw.org/es/biblioteca/libros/Benef%C3%ADciese-de-la-Escuela-del-Ministerio-Teocr%C3%A1tico/).
+
+Fundamenta tus consejos en las 53 lecciones de oratoria y enseñanza de este manual, tales como:
+- Lección 1: Lectura con precisión
+- Lección 2: Pronunciación clara
+- Lección 3: Palabras bien articuladas
+- Lección 4: Modulación (cambio de volumen, ritmo y tono)
+- Lección 5: Pausas oportunas (para cambiar de idea, dar énfasis o permitir reflexionar)
+- Lección 6: Énfasis debido y subordinación de ideas secundarias
+- Lección 7: Énfasis en las ideas principales
+- Lección 8: Volumen adecuado
+- Lección 9: Entusiasmo y calidez
+- Lección 10: Naturalidad y porte
+- Lección 12: Contacto visual y ademanes
+- Lección 14: Uso eficaz de los textos bíblicos (introducir el texto, leer con convicción, aplicar con claridad)
+- Lección 18: Razonamiento lógico y aplicación práctica
+- Lección 39: Introducción que despierte interés
+- Lección 40: Conclusión oportuna que mueva al corazón
+- Lección 41: Respeto estricto del tiempo asignado
+
+En "actionableTips", nombra directamente la lección o punto de consejo del libro Benefíciese (por ejemplo: "Punto de consejo 5: Pausas oportunas — ...") con recomendaciones prácticas aplicables.
+`
+      : `
+MARCO DE CONSEJO Y ENTRENAMIENTO DE ORATORIA:
+El orador prefiere oratoria general contemporánea. Actúa como un juez y coach de elocuencia y comunicación pública profesional (estilo Toastmasters International, TED Talks, Dale Carnegie y retórica clásica contemporánea).
+Tus consejos deben provenir de las mejores prácticas universales de la oratoria pública, presencia escénica, variedad vocal y persuasión.
+`;
+
     const promptText = `
-Eres un entrenador y juez experto en oratoria, elocuencia y comunicación pública (estilo Toastmasters, TED, y conferencias magistrales).
+${jwCounselGuide}
 El orador acaba de ensayar su discurso titulado: "${speechTitle || 'Discurso de Oratoria'}".
 Métricas de tiempo registradas:
 ${timeSummary}
 
 ${referenceSourceText ? `\n--- FUENTE DE CONSULTA / BOSQUEJO UTILIZADO ---\n${referenceSourceText.slice(0, 8000)}\n----------------------------------------\n` : ''}
 ${userNotes ? `\nAutoevaluación previa del orador: "${userNotes}"\n` : ''}
+
+CONFIDENCIALIDAD ESTRICTA: El material y bosquejos del orador son de uso estrictamente personal y privado.
 
 Por favor, realiza un análisis integral y constructivo de este ensayo.
 Si se incluye el audio del ensayo adjunto, analiza cuidadosamente la cadencia, tono, modulación, pausas y claridad vocal.
@@ -79,7 +114,9 @@ Devuelve tu respuesta ÚNICAMENTE en formato JSON con la siguiente estructura ex
     "Consejo 2 práctico y específico",
     "Consejo 3 práctico y específico"
   ],
-  "recommendedExercise": "Un ejercicio vocal o de respiración recomendado para su próxima práctica (ej: lectura con lápiz, práctica de pausas de 2 segundos, etc.)"
+  "recommendedExercise": "Un ejercicio vocal o de respiración recomendado para su próxima práctica",
+  "isJwCounsel": ${isJehovahsWitness ? 'true' : 'false'},
+  "jwCounselSource": "${isJehovahsWitness ? 'Benefíciese de la Escuela del Ministerio Teocrático (jw.org)' : 'Oratoria General'}"
 }
 `;
 

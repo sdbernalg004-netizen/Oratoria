@@ -57,27 +57,31 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
   }
 
   // Circular gauge values
-  const strokeRadius = 120;
+  const strokeRadius = isCompact ? 100 : 120;
   const circumference = 2 * Math.PI * strokeRadius;
   const strokeDashoffset = circumference - (progressPercent / 100) * circumference;
 
   return (
-    <div className={`flex flex-col items-center justify-center relative w-full ${isCompact ? 'py-4' : 'py-8'}`}>
+    <div className={`flex flex-col items-center justify-center relative w-full ${isCompact ? 'py-1 sm:py-2' : 'py-8'}`}>
       {/* Phase Indicator Badge */}
       <div
-        className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-medium border mb-4 transition-all duration-300 ${phaseColor}`}
+        className={`inline-flex items-center gap-1.5 rounded-full font-medium border transition-all duration-300 ${
+          isCompact ? 'px-2.5 py-0.5 text-[11px] mb-2' : 'px-3.5 py-1 text-xs mb-4'
+        } ${phaseColor}`}
       >
-        <PhaseIcon className="w-3.5 h-3.5" />
+        <PhaseIcon className={isCompact ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
         <span>{phaseText}</span>
         {status === 'paused' && (
-          <span className="text-neutral-400 text-[11px] font-normal">· Pausado</span>
+          <span className="text-neutral-400 text-[10px] font-normal">· Pausado</span>
         )}
       </div>
 
       {/* Main Circular & Numeric Display */}
-      <div className="relative flex items-center justify-center my-2">
+      <div className="relative flex items-center justify-center my-1">
         {/* SVG Circular Ring Gauge */}
-        <div className="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+        <div className={`relative flex items-center justify-center transition-all ${
+          isCompact ? 'w-44 h-44 sm:w-48 sm:h-48' : 'w-64 h-64 sm:w-72 sm:h-72 my-2'
+        }`}>
           <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 280 280">
             {/* Background Track */}
             <circle
@@ -85,7 +89,7 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
               cy="140"
               r={strokeRadius}
               className="text-neutral-800/80 stroke-current"
-              strokeWidth="10"
+              strokeWidth={isCompact ? '9' : '10'}
               fill="transparent"
             />
             {/* Active Gauge */}
@@ -102,7 +106,7 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
                   ? 'text-yellow-400'
                   : 'text-blue-500'
               }`}
-              strokeWidth="12"
+              strokeWidth={isCompact ? '10' : '12'}
               strokeDasharray={circumference}
               strokeDashoffset={isOvertime ? 0 : strokeDashoffset}
               strokeLinecap="round"
@@ -113,20 +117,20 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
           {/* Centered Digital Numbers */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none">
             {isOvertime && (
-              <span className="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-400 mb-0.5">
                 Tiempo Extra
               </span>
             )}
             <div
               className={`font-mono tabular-nums tracking-tighter leading-none font-bold text-white transition-all ${
                 isOvertime ? 'text-rose-400' : 'text-neutral-50'
-              } ${isCompact ? 'text-5xl sm:text-6xl' : 'text-6xl sm:text-7xl md:text-8xl'}`}
+              } ${isCompact ? 'text-4xl sm:text-5xl' : 'text-6xl sm:text-7xl md:text-8xl'}`}
             >
               {isOvertime && '+'}
               {minutes}:{seconds}
             </div>
 
-            <div className="text-xs text-neutral-400 mt-2 flex items-center gap-2">
+            <div className={`text-neutral-400 flex items-center gap-1.5 ${isCompact ? 'text-[11px] mt-1' : 'text-xs mt-2 gap-2'}`}>
               <span>Objetivo: {formatHumanTime(targetSeconds)}</span>
               <span>·</span>
               <span>{Math.round(progressPercent)}%</span>
@@ -136,23 +140,27 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({
       </div>
 
       {/* Quick Time Micro-Adjusters */}
-      <div className="flex items-center gap-3 mt-4">
+      <div className={`flex items-center ${isCompact ? 'gap-2 mt-2 text-[11px]' : 'gap-3 mt-4 text-xs'}`}>
         <button
           onClick={() => onAddSeconds(-30)}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs text-neutral-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors"
+          className={`flex items-center gap-1 text-neutral-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors ${
+            isCompact ? 'px-2 py-1' : 'px-3 py-1.5'
+          }`}
           title="Restar 30 segundos"
         >
           <Minus className="w-3 h-3" />
           <span>30s</span>
         </button>
 
-        <span className="text-xs text-neutral-400">
-          Transcurrido: <strong className="text-neutral-300 font-mono">{formatHumanTime(elapsedSeconds)}</strong>
+        <span className="text-neutral-400 font-mono text-center">
+          <strong className="text-neutral-300 font-mono">{formatHumanTime(elapsedSeconds)}</strong>
         </span>
 
         <button
           onClick={() => onAddSeconds(30)}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs text-neutral-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors"
+          className={`flex items-center gap-1 text-neutral-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg transition-colors ${
+            isCompact ? 'px-2 py-1' : 'px-3 py-1.5'
+          }`}
           title="Añadir 30 segundos"
         >
           <Plus className="w-3 h-3" />

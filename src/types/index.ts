@@ -33,6 +33,8 @@ export interface SpeechDraft {
   sections: SpeechSection[];
   fullText: string;
   lastEdited: number;
+  isPrivate?: boolean;
+  isJwOutline?: boolean;
 }
 
 export interface SourceDocument {
@@ -42,6 +44,7 @@ export interface SourceDocument {
   content: string; // text content or base64 / blob URL for PDF
   pdfUrl?: string;
   pages?: string[]; // for paginated text reading
+  sections?: SpeechSection[]; // for sections reading mode
   currentPage: number;
   totalPages: number;
   theme: 'warm-cream' | 'white' | 'sepia' | 'dark';
@@ -67,6 +70,8 @@ export interface AISpeechAnalysis {
   actionableTips: string[];
   recommendedExercise: string;
   analyzedAt: number;
+  isJwCounsel?: boolean;
+  jwCounselSource?: string;
 }
 
 export interface RehearsalRecord {

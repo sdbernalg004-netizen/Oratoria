@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Cloud, CloudOff, FileText, Trash2, Play, Plus, Clock, ListChecks, CheckCircle, Upload } from 'lucide-react';
+import { X, Cloud, CloudOff, FileText, Trash2, Play, Plus, Clock, ListChecks, CheckCircle, Upload, ShieldCheck } from 'lucide-react';
 import { SpeechDraft, SourceDocument } from '../types';
 import { useAuth } from '../context/AuthContext';
 
@@ -82,6 +82,14 @@ export const SavedSpeechesModal: React.FC<SavedSpeechesModalProps> = ({
             </button>
           </div>
         )}
+
+        {/* Strict Confidentiality Guarantee Badge */}
+        <div className="mx-6 mt-3 px-3.5 py-2 bg-emerald-950/25 border border-emerald-800/40 rounded-xl flex items-center gap-2.5 text-xs text-emerald-300">
+          <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="text-[11px] leading-relaxed">
+            <strong>Privacidad Estricta:</strong> Los bosquejos de JW y notas son de uso exclusivamente personal para quien los suba. No se comparten ni se filtran.
+          </span>
+        </div>
 
         {/* Speeches List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-3">

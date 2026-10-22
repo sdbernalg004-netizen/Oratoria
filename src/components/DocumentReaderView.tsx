@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SourceDocument, SpeechSection } from '../types';
+import { SourceDocument, SpeechSection, SpeechDraft } from '../types';
 import {
   Upload,
   BookOpen,
@@ -15,6 +15,10 @@ import {
   ScrollText,
   Layers,
   FileSearch,
+  ListOrdered,
+  Clock,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ExtractedPDFData {
@@ -36,6 +40,8 @@ interface DocumentReaderViewProps {
   isProcessingFile?: boolean;
   onGoToSplitView?: () => void;
   onPDFExtracted?: (extracted: ExtractedPDFData, pdfUrl?: string) => void;
+  currentSpeech?: SpeechDraft;
+  onUpdateSpeech?: (speech: SpeechDraft) => void;
 }
 
 // Utility to split raw text into clean verbatim pages without altering or summarizing any words
@@ -70,6 +76,8 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
   isProcessingFile = false,
   onGoToSplitView,
   onPDFExtracted,
+  currentSpeech,
+  onUpdateSpeech,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -78,8 +86,16 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
   const [newDocTitle, setNewDocTitle] = useState('');
   const [newDocContent, setNewDocContent] = useState('');
 
-  // Reader mode: 'continuous' (all text in smooth scroll) vs 'paginated' (by screens)
-  const [readingMode, setReadingMode] = useState<'continuous' | 'paginated'>('continuous');
+  // Reader mode: 'continuous' (all text in smooth scroll) vs 'paginated' (by screens) vs 'sections' (structured speech points)
+  const [readingMode, setReadingMode] = useState<'continuous' | 'paginated' | 'sections'>('continuous');
+  const [checkedPoints, setCheckedPoints] = useState<Record<string, boolean>>({});
+
+  const toggleCheckPoint = (key: string) => {
+    setCheckedPoints((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   // For PDF: toggle between 'text' (dark verbatim reader) and 'pdf-embed' (original PDF viewer)
   const [pdfDisplayMode, setPdfDisplayMode] = useState<'text' | 'pdf-embed'>('text');
@@ -376,7 +392,7 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
 
         {/* Center / Right controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Mode Switcher: Continuous vs Paginated */}
+          {/* Mode Switcher: Continuous vs Paginated vs Secciones */}
           <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/10 text-[11px]">
             <button
               onClick={() => setReadingMode('continuous')}
@@ -401,6 +417,18 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
             >
               <Layers className="w-3 h-3" />
               <span className="hidden sm:inline">Paginado</span>
+            </button>
+            <button
+              onClick={() => setReadingMode('sections')}
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
+                readingMode === 'sections'
+                  ? 'bg-blue-600 text-white font-medium'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+              title="Ver el bosquejo dividido en secciones y puntos clave de oratoria"
+            >
+              <ListOrdered className="w-3 h-3" />
+              <span className="hidden sm:inline">Secciones</span>
             </button>
           </div>
 
@@ -652,6 +680,114 @@ export const DocumentReaderView: React.FC<DocumentReaderViewProps> = ({
               </p>
             ))}
           </article>
+        ) : readingMode === 'sections' ? (
+          /* Modo Secciones: Visualiza las divisiones, notas y puntos clave interactivos */
+          <div className="w-full max-w-3xl py-4 space-y-4 text-left">
+            {/* Header notification with privacy & fidelity reassurance */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs">
+              <div className="flex items-center gap-2 text-neutral-300">
+                <ListOrdered className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="font-semibold text-white">
+                  Secciones del Bosquejo ({((currentSpeech?.sections && currentSpeech.sections.length > 0 ? currentSpeech.sections : currentDoc?.sections) || []).length})
+                </span>
+                <span className="text-neutral-500 hidden sm:inline">· Puntos clave para el orador</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-800/40">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Uso personal protegido</span>
+              </div>
+            </div>
+
+            {((currentSpeech?.sections && currentSpeech.sections.length > 0 ? currentSpeech.sections : currentDoc?.sections) || []).length > 0 ? (
+              <div className="space-y-4">
+                {((currentSpeech?.sections && currentSpeech.sections.length > 0 ? currentSpeech.sections : currentDoc?.sections) || []).map((sec, idx) => (
+                  <div
+                    key={sec.id || idx}
+                    className="p-5 rounded-2xl border transition-all shadow-md bg-neutral-900/70 border-neutral-800/90 hover:border-neutral-700/80"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-neutral-800">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center text-xs font-bold font-mono">
+                          {idx + 1}
+                        </span>
+                        <h4 className="font-bold text-white text-base">
+                          {sec.title}
+                        </h4>
+                      </div>
+
+                      {sec.estimatedMinutes && (
+                        <div className="flex items-center gap-1 text-xs text-neutral-400 bg-neutral-950 px-2.5 py-1 rounded-lg border border-neutral-800 font-mono">
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          <span>~{sec.estimatedMinutes} min</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section Notes / Text */}
+                    {sec.notes && (
+                      <div
+                        className="text-neutral-300 leading-relaxed font-sans whitespace-pre-wrap mb-4"
+                        style={{ fontSize: `${Math.max(16, (currentDoc?.fontSize || 20) - 2)}px` }}
+                      >
+                        {sec.notes}
+                      </div>
+                    )}
+
+                    {/* Key points checklist */}
+                    {sec.keyPoints && sec.keyPoints.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 space-y-2 mt-3">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block">
+                          Puntos Clave a enfatizar:
+                        </span>
+                        <div className="space-y-1.5">
+                          {sec.keyPoints.map((kp, kpIdx) => {
+                            const pointId = `${sec.id}-kp-${kpIdx}`;
+                            const isChecked = !!checkedPoints[pointId];
+                            return (
+                              <button
+                                key={kpIdx}
+                                onClick={() => toggleCheckPoint(pointId)}
+                                className={`w-full flex items-start gap-2.5 p-2 rounded-lg text-left transition-colors text-xs ${
+                                  isChecked
+                                    ? 'bg-emerald-950/30 text-emerald-300 border border-emerald-800/30'
+                                    : 'hover:bg-neutral-800/60 text-neutral-300'
+                                }`}
+                              >
+                                <div
+                                  className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center border transition-colors shrink-0 ${
+                                    isChecked
+                                      ? 'bg-emerald-600 border-emerald-500 text-white'
+                                      : 'border-neutral-600 bg-neutral-900'
+                                  }`}
+                                >
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <span className={isChecked ? 'line-through opacity-75' : ''}>{kp}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-neutral-900/50 rounded-2xl border border-neutral-800 space-y-3">
+                <FileText className="w-8 h-8 text-neutral-500 mx-auto" />
+                <p className="text-sm font-semibold text-white">No se detectaron secciones divididas aún</p>
+                <p className="text-xs text-neutral-400 max-w-md mx-auto">
+                  Puedes leer el texto en modo <strong>Continuo</strong> o subir un archivo PDF o Word para recargar secciones automáticas.
+                </p>
+                <button
+                  onClick={() => setReadingMode('continuous')}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-colors shadow"
+                >
+                  Cambiar a Modo Continuo
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           /* Modo Paginado con flechas */
           <>
