@@ -24,6 +24,15 @@
           "type": "boolean",
           "description": "Whether the user customizes speech training based on the Benefíciese book from jw.org"
         },
+        "isJwVerified": {
+          "type": "boolean",
+          "description": "Whether the user passed the theocratic school verification and accepted copyright/proper-use commitments"
+        },
+        "jwTermsAcceptedAt": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Timestamp when copyright and proper use terms were accepted"
+        },
         "createdAt": {
           "type": "string",
           "maxLength": 50,

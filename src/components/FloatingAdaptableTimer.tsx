@@ -28,6 +28,8 @@ interface FloatingAdaptableTimerProps {
   onOpenSoundModal?: () => void;
   isRecording?: boolean;
   onDockToSide?: () => void;
+  timerMode?: 'temporizador' | 'cronometro';
+  onTimerModeChange?: (mode: 'temporizador' | 'cronometro') => void;
 }
 
 export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
@@ -42,9 +44,20 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
   onOpenSoundModal,
   isRecording = false,
   onDockToSide,
+  timerMode: controlledMode,
+  onTimerModeChange,
 }) => {
   // Mode: 'cronometro' (count-up stopwatch) or 'temporizador' (countdown timer)
-  const [timerMode, setTimerMode] = useState<'cronometro' | 'temporizador'>('temporizador');
+  const [internalTimerMode, setInternalTimerMode] = useState<'cronometro' | 'temporizador'>('temporizador');
+  const timerMode = controlledMode ?? internalTimerMode;
+
+  const handleSetTimerMode = (mode: 'cronometro' | 'temporizador') => {
+    if (onTimerModeChange) {
+      onTimerModeChange(mode);
+    } else {
+      setInternalTimerMode(mode);
+    }
+  };
 
   // Laps / Parciales list
   const [laps, setLaps] = useState<{ id: number; time: string; label: string }[]>([]);
@@ -159,9 +172,15 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
   const isOvertime = status === 'overtime';
 
   // Value depending on mode
-  const currentSeconds = timerMode === 'temporizador' 
-    ? (isOvertime ? overtimeSeconds : remainingSeconds)
-    : elapsedSeconds;
+  const rawSeconds =
+    timerMode === 'temporizador'
+      ? isOvertime
+        ? overtimeSeconds
+        : remainingSeconds
+      : elapsedSeconds;
+
+  const currentSeconds =
+    typeof rawSeconds === 'number' && Number.isFinite(rawSeconds) ? Math.round(rawSeconds) : 0;
 
   const m = Math.floor(Math.abs(currentSeconds) / 60);
   const s = Math.abs(currentSeconds) % 60;
@@ -323,7 +342,7 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
             {/* Quick Mode Switcher tab: Cronómetro | Temporizador */}
             <div className="flex items-center gap-1 mt-2 p-0.5 bg-neutral-900 rounded-lg border border-neutral-800 text-[10px]">
               <button
-                onClick={() => setTimerMode('temporizador')}
+                onClick={() => handleSetTimerMode('temporizador')}
                 className={`px-2 py-0.5 rounded-md transition-colors ${
                   timerMode === 'temporizador'
                     ? 'bg-blue-600 text-white font-medium'
@@ -333,10 +352,10 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
                 Temporizador
               </button>
               <button
-                onClick={() => setTimerMode('cronometro')}
+                onClick={() => handleSetTimerMode('cronometro')}
                 className={`px-2 py-0.5 rounded-md transition-colors ${
                   timerMode === 'cronometro'
-                    ? 'bg-blue-600 text-white font-medium'
+                    ? 'bg-emerald-600 text-white font-medium'
                     : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -369,7 +388,7 @@ export const FloatingAdaptableTimer: React.FC<FloatingAdaptableTimerProps> = ({
 
             {/* Reset */}
             <button
-              onClick={onResetTimer}
+              onClick={() => onResetTimer()}
               className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-xl transition-colors border border-neutral-700/60 active:scale-95"
               title="Reiniciar a cero (R)"
             >

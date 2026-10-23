@@ -40,41 +40,32 @@ app.post('/api/analyze-speech', async (req, res) => {
       audioMimeType = 'audio/webm',
       userNotes,
       isJehovahsWitness = false,
+      isJwVerified = false,
     } = req.body;
 
-    const delta = actualSeconds - targetSeconds;
+    const useVerifiedJwCounsel = Boolean(isJehovahsWitness && isJwVerified);
+
+    const safeTarget = Number.isFinite(Number(targetSeconds)) && Number(targetSeconds) > 0 ? Number(targetSeconds) : 300;
+    const safeActual = Number.isFinite(Number(actualSeconds)) && Number(actualSeconds) >= 0 ? Number(actualSeconds) : 0;
+    const delta = safeActual - safeTarget;
     const isOvertime = delta > 0;
-    const timeSummary = `Tiempo objetivo: ${Math.floor(targetSeconds / 60)}m ${targetSeconds % 60}s. Tiempo logrado: ${Math.floor(actualSeconds / 60)}m ${actualSeconds % 60}s (${isOvertime ? `Excedido por +${delta}s` : `Completado con ${Math.abs(delta)}s de anticipación`}).`;
+    const timeSummary = `Tiempo objetivo: ${Math.floor(safeTarget / 60)}m ${safeTarget % 60}s. Tiempo logrado: ${Math.floor(safeActual / 60)}m ${safeActual % 60}s (${isOvertime ? `Excedido por +${delta}s` : `Completado con ${Math.abs(delta)}s de anticipación`}).`;
 
-    const jwCounselGuide = isJehovahsWitness
+    const jwCounselGuide = useVerifiedJwCounsel
       ? `
-MARCO DE CONSEJO Y ENTRENAMIENTO DE ORATORIA:
-El orador es Testigo de Jehová. Por solicitud explícita, debes actuar como un consejero de oratoria teocrática cristiana basado en el libro oficial de estudio:
-"Benefíciese de la Escuela del Ministerio Teocrático" (disponible en jw.org: https://www.jw.org/es/biblioteca/libros/Benef%C3%ADciese-de-la-Escuela-del-Ministerio-Teocr%C3%A1tico/).
+MARCO DE CONSEJO Y ENTRENAMIENTO DE ORATORIA (VERIFICADO CON PROTECCIÓN DE DERECHOS DE AUTOR):
+El orador ha verificado su participación en la escuela teocrática y ha aceptado las condiciones de respeto a los derechos de autor de jw.org.
+Orienta tu evaluación pedagógica según los principios de oratoria de los 53 aspectos del manual de estudio:
+"Benefíciese de la Escuela del Ministerio Teocrático" (enlace oficial: https://www.jw.org/es/biblioteca/libros/Benef%C3%ADciese-de-la-Escuela-del-Ministerio-Teocr%C3%A1tico/).
 
-Fundamenta tus consejos en las 53 lecciones de oratoria y enseñanza de este manual, tales como:
-- Lección 1: Lectura con precisión
-- Lección 2: Pronunciación clara
-- Lección 3: Palabras bien articuladas
-- Lección 4: Modulación (cambio de volumen, ritmo y tono)
-- Lección 5: Pausas oportunas (para cambiar de idea, dar énfasis o permitir reflexionar)
-- Lección 6: Énfasis debido y subordinación de ideas secundarias
-- Lección 7: Énfasis en las ideas principales
-- Lección 8: Volumen adecuado
-- Lección 9: Entusiasmo y calidez
-- Lección 10: Naturalidad y porte
-- Lección 12: Contacto visual y ademanes
-- Lección 14: Uso eficaz de los textos bíblicos (introducir el texto, leer con convicción, aplicar con claridad)
-- Lección 18: Razonamiento lógico y aplicación práctica
-- Lección 39: Introducción que despierte interés
-- Lección 40: Conclusión oportuna que mueva al corazón
-- Lección 41: Respeto estricto del tiempo asignado
-
-En "actionableTips", nombra directamente la lección o punto de consejo del libro Benefíciese (por ejemplo: "Punto de consejo 5: Pausas oportunas — ...") con recomendaciones prácticas aplicables.
+REGLA ESTRICTA DE DERECHOS DE AUTOR (CUMPLIMIENTO OBLIGATORIO):
+1. PROHIBIDO reproducir, citar textualmente o copiar párrafos protegidos por derechos de autor del libro «Benefíciese» o de cualquier publicación de Watch Tower Bible and Tract Society of Pennsylvania.
+2. Redacta el 100% de tus observaciones con tus propias palabras originales como entrenador vocal, mencionando únicamente el número y tema general del aspecto de oratoria a trabajar (por ejemplo: Aspecto 1: Lectura con precisión, Aspecto 4: Modulación, Aspecto 5: Pausas oportunas, Aspecto 6: Énfasis debido, Aspecto 7: Énfasis en las ideas principales, Aspecto 9: Entusiasmo y calidez, Aspecto 12: Contacto visual, Aspecto 14: Uso eficaz de los textos bíblicos, Aspecto 39: Introducción eficaz, Aspecto 40: Conclusión apropiada, Aspecto 41: Respeto del tiempo asignado).
+3. En cada consejo dentro de "actionableTips", invita al estudiante a leer directamente la lección correspondiente en la fuente oficial en jw.org.
 `
       : `
 MARCO DE CONSEJO Y ENTRENAMIENTO DE ORATORIA:
-El orador prefiere oratoria general contemporánea. Actúa como un juez y coach de elocuencia y comunicación pública profesional (estilo Toastmasters International, TED Talks, Dale Carnegie y retórica clásica contemporánea).
+El orador utiliza el modo de Oratoria General Contemporánea. Actúa como un juez y coach de elocuencia y comunicación pública profesional (tomando principios universales de la red, Toastmasters International, conferencias TED, Dale Carnegie y retórica clásica contemporánea).
 Tus consejos deben provenir de las mejores prácticas universales de la oratoria pública, presencia escénica, variedad vocal y persuasión.
 `;
 
@@ -110,13 +101,13 @@ Devuelve tu respuesta ÚNICAMENTE en formato JSON con la siguiente estructura ex
     "feedback": "Cómo se adaptó la exposición al bosquejo o fuente de consulta, transiciones y énfasis en puntos principales."
   },
   "actionableTips": [
-    "Consejo 1 práctico y específico para aplicar en el siguiente intento",
-    "Consejo 2 práctico y específico",
-    "Consejo 3 práctico y específico"
+    "Consejo 1 práctico y específico con redacción 100% original para aplicar en el siguiente intento",
+    "Consejo 2 práctico y específico con redacción 100% original",
+    "Consejo 3 práctico y específico con redacción 100% original"
   ],
   "recommendedExercise": "Un ejercicio vocal o de respiración recomendado para su próxima práctica",
-  "isJwCounsel": ${isJehovahsWitness ? 'true' : 'false'},
-  "jwCounselSource": "${isJehovahsWitness ? 'Benefíciese de la Escuela del Ministerio Teocrático (jw.org)' : 'Oratoria General'}"
+  "isJwCounsel": ${useVerifiedJwCounsel ? 'true' : 'false'},
+  "jwCounselSource": "${useVerifiedJwCounsel ? 'Guía de 53 Aspectos · Consultar texto oficial en jw.org' : 'Oratoria General y Fuentes de la Red'}"
 }
 `;
 

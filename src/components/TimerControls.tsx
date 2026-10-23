@@ -47,7 +47,7 @@ export const TimerControls: React.FC<TimerControlsProps> = ({
       <div className={`flex items-center ${isCompact ? 'gap-2 w-full justify-center' : 'gap-4'}`}>
         {/* Reset Button */}
         <button
-          onClick={onResetTimer}
+          onClick={() => onResetTimer()}
           className={`text-neutral-400 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-xl transition-all shadow-sm active:scale-95 ${
             isCompact ? 'p-2.5' : 'p-3'
           }`}

@@ -74,6 +74,8 @@ export async function getUserProfile(userId: string): Promise<{
   displayName?: string;
   email?: string;
   isJehovahsWitness?: boolean;
+  isJwVerified?: boolean;
+  jwTermsAcceptedAt?: string;
 } | null> {
   const userPath = `users/${userId}`;
   try {
@@ -89,16 +91,23 @@ export async function getUserProfile(userId: string): Promise<{
   }
 }
 
-// Update JW affiliation status for speech counsel personalization
-export async function updateUserJwStatus(userId: string, isJehovahsWitness: boolean): Promise<void> {
+// Update JW affiliation status and copyright verification for speech counsel personalization
+export async function updateUserJwStatus(
+  userId: string,
+  isJehovahsWitness: boolean,
+  isJwVerified: boolean = false
+): Promise<void> {
   const userPath = `users/${userId}`;
   try {
     const userDocRef = doc(db, 'users', userId);
+    const nowIso = new Date().toISOString();
     await setDoc(
       userDocRef,
       {
         isJehovahsWitness,
-        updatedAt: new Date().toISOString(),
+        isJwVerified: isJehovahsWitness && isJwVerified,
+        jwTermsAcceptedAt: isJehovahsWitness && isJwVerified ? nowIso : '',
+        updatedAt: nowIso,
       },
       { merge: true }
     );

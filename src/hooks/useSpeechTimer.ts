@@ -17,8 +17,13 @@ export function useSpeechTimer({
   onTimeExpired,
   onStateChange,
 }: UseSpeechTimerProps) {
-  const [targetSeconds, setTargetSecondsState] = useState<number>(initialSeconds);
-  const [remainingSeconds, setRemainingSeconds] = useState<number>(initialSeconds);
+  const safeInitial =
+    typeof initialSeconds === 'number' && Number.isFinite(initialSeconds) && initialSeconds > 0
+      ? Math.round(initialSeconds)
+      : 420;
+
+  const [targetSeconds, setTargetSecondsState] = useState<number>(safeInitial);
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(safeInitial);
   const [overtimeSeconds, setOvertimeSeconds] = useState<number>(0);
   const [status, setStatus] = useState<TimerStatus>('idle');
 
@@ -74,7 +79,9 @@ export function useSpeechTimer({
 
     const delta = timestamp - lastTickTimeRef.current;
     lastTickTimeRef.current = timestamp;
-    accumulatedMsRef.current += delta;
+    if (Number.isFinite(delta) && delta > 0) {
+      accumulatedMsRef.current += delta;
+    }
 
     // Advance by full seconds when accumulated >= 1000ms
     if (accumulatedMsRef.current >= 1000) {
@@ -82,8 +89,14 @@ export function useSpeechTimer({
       accumulatedMsRef.current %= 1000;
 
       setRemainingSeconds((prevRem) => {
-        const nextRem = prevRem - secondsToAdvance;
-        const currentTarget = targetSeconds;
+        const safePrevRem =
+          typeof prevRem === 'number' && Number.isFinite(prevRem) ? prevRem : safeInitial;
+        const currentTarget =
+          typeof targetSeconds === 'number' && Number.isFinite(targetSeconds) && targetSeconds > 0
+            ? targetSeconds
+            : safeInitial;
+
+        const nextRem = safePrevRem - secondsToAdvance;
         const halfwayThreshold = Math.floor(currentTarget / 2);
 
         // Check alerts
@@ -132,14 +145,14 @@ export function useSpeechTimer({
           }
 
           setStatus('overtime');
-          const over = Math.abs(nextRem);
-          setOvertimeSeconds(over);
-
-          // Overtime periodic reminder every 30s
-          if (cfg.overtimeBeeper && over > 0 && over % 30 === 0 && alerts.lastOvertimeMark !== over) {
-            alerts.lastOvertimeMark = over;
-            triggerSoundIfAllowed('overtimeWarning');
-          }
+          setOvertimeSeconds((prevOver) => {
+            const baseOver = safePrevRem > 0 ? Math.abs(nextRem) : (Number.isFinite(prevOver) ? prevOver : 0) + secondsToAdvance;
+            if (cfg.overtimeBeeper && baseOver > 0 && baseOver % 30 === 0 && alerts.lastOvertimeMark !== baseOver) {
+              alerts.lastOvertimeMark = baseOver;
+              triggerSoundIfAllowed('overtimeWarning');
+            }
+            return baseOver;
+          });
 
           return 0;
         }
@@ -149,7 +162,7 @@ export function useSpeechTimer({
     }
 
     animationFrameRef.current = requestAnimationFrame(tick);
-  }, [targetSeconds, triggerSoundIfAllowed]);
+  }, [targetSeconds, safeInitial, triggerSoundIfAllowed]);
 
   useEffect(() => {
     if (status === 'running' || status === 'overtime') {
@@ -197,9 +210,19 @@ export function useSpeechTimer({
 
   const resetTimer = useCallback(
     (newTarget?: number) => {
-      const t = newTarget !== undefined ? newTarget : targetSeconds;
-      if (newTarget !== undefined) {
-        setTargetSecondsState(newTarget);
+      // Guard against React MouseEvent being passed when wired directly to onClick={onResetTimer}
+      const isValidNumber =
+        typeof newTarget === 'number' && Number.isFinite(newTarget) && newTarget > 0;
+      const safeCurrentTarget =
+        typeof targetSeconds === 'number' && Number.isFinite(targetSeconds) && targetSeconds > 0
+          ? targetSeconds
+          : safeInitial;
+      const t = isValidNumber ? Math.round(newTarget) : safeCurrentTarget;
+
+      if (isValidNumber) {
+        setTargetSecondsState(t);
+      } else if (!Number.isFinite(targetSeconds) || targetSeconds <= 0) {
+        setTargetSecondsState(safeInitial);
       }
       setRemainingSeconds(t);
       setOvertimeSeconds(0);
@@ -210,42 +233,70 @@ export function useSpeechTimer({
         onStateChangeRef.current('idle');
       }
     },
-    [targetSeconds, resetAlerts]
+    [targetSeconds, safeInitial, resetAlerts]
   );
 
-  const addSeconds = useCallback((delta: number) => {
-    setRemainingSeconds((prev) => {
-      const next = Math.max(10, prev + delta);
-      return next;
-    });
-    setTargetSecondsState((prev) => Math.max(10, prev + delta));
-  }, []);
+  const addSeconds = useCallback(
+    (delta: number) => {
+      const safeDelta = typeof delta === 'number' && Number.isFinite(delta) ? Math.round(delta) : 0;
+      setRemainingSeconds((prev) => {
+        const base = typeof prev === 'number' && Number.isFinite(prev) ? prev : safeInitial;
+        return Math.max(10, base + safeDelta);
+      });
+      setTargetSecondsState((prev) => {
+        const base = typeof prev === 'number' && Number.isFinite(prev) ? prev : safeInitial;
+        return Math.max(10, base + safeDelta);
+      });
+    },
+    [safeInitial]
+  );
 
-  const setTargetSeconds = useCallback((seconds: number) => {
-    const valid = Math.max(10, seconds);
-    setTargetSecondsState(valid);
-    setRemainingSeconds(valid);
-    setOvertimeSeconds(0);
-    setStatus('idle');
-    accumulatedMsRef.current = 0;
-    resetAlerts();
-  }, [resetAlerts]);
+  const setTargetSeconds = useCallback(
+    (seconds: number) => {
+      const safeSec =
+        typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+          ? Math.round(seconds)
+          : safeInitial;
+      const valid = Math.max(10, safeSec);
+      setTargetSecondsState(valid);
+      setRemainingSeconds(valid);
+      setOvertimeSeconds(0);
+      setStatus('idle');
+      accumulatedMsRef.current = 0;
+      resetAlerts();
+    },
+    [safeInitial, resetAlerts]
+  );
+
+  const safeTargetSec =
+    typeof targetSeconds === 'number' && Number.isFinite(targetSeconds) && targetSeconds > 0
+      ? targetSeconds
+      : safeInitial;
+  const safeRemainingSec =
+    typeof remainingSeconds === 'number' && Number.isFinite(remainingSeconds) && remainingSeconds >= 0
+      ? remainingSeconds
+      : safeTargetSec;
+  const safeOvertimeSec =
+    typeof overtimeSeconds === 'number' && Number.isFinite(overtimeSeconds) && overtimeSeconds >= 0
+      ? overtimeSeconds
+      : 0;
 
   // Total elapsed time in current rehearsal
-  const elapsedSeconds = status === 'overtime' 
-    ? targetSeconds + overtimeSeconds 
-    : targetSeconds - remainingSeconds;
+  const elapsedSeconds =
+    status === 'overtime'
+      ? safeTargetSec + safeOvertimeSec
+      : Math.max(0, safeTargetSec - safeRemainingSec);
 
   // Percentage complete (0 to 100)
-  const progressPercent = Math.min(
-    100,
-    Math.max(0, ((targetSeconds - remainingSeconds) / targetSeconds) * 100)
-  );
+  const rawPercent = ((safeTargetSec - safeRemainingSec) / safeTargetSec) * 100;
+  const progressPercent = Number.isFinite(rawPercent)
+    ? Math.min(100, Math.max(0, rawPercent))
+    : 0;
 
   return {
-    targetSeconds,
-    remainingSeconds,
-    overtimeSeconds,
+    targetSeconds: safeTargetSec,
+    remainingSeconds: safeRemainingSec,
+    overtimeSeconds: safeOvertimeSec,
     elapsedSeconds,
     status,
     progressPercent,
@@ -263,8 +314,10 @@ export function formatSecondsToDigital(totalSeconds: number): {
   seconds: string;
   isNegative: boolean;
 } {
-  const isNegative = totalSeconds < 0;
-  const absSec = Math.abs(Math.round(totalSeconds));
+  const safeTotal =
+    typeof totalSeconds === 'number' && Number.isFinite(totalSeconds) ? totalSeconds : 0;
+  const isNegative = safeTotal < 0;
+  const absSec = Math.abs(Math.round(safeTotal));
   const m = Math.floor(absSec / 60);
   const s = absSec % 60;
 
@@ -276,8 +329,12 @@ export function formatSecondsToDigital(totalSeconds: number): {
 }
 
 export function formatHumanTime(totalSec: number): string {
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
+  const safeSec =
+    typeof totalSec === 'number' && Number.isFinite(totalSec) && totalSec >= 0
+      ? Math.round(totalSec)
+      : 0;
+  const m = Math.floor(safeSec / 60);
+  const s = safeSec % 60;
   if (m === 0) return `${s}s`;
   if (s === 0) return `${m} min`;
   return `${m}m ${s}s`;

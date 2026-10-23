@@ -83,6 +83,22 @@ export default function App() {
     } catch {}
   }, [autoFloatOnStart]);
 
+  // Timer vs Stopwatch Mode ('temporizador' countdown | 'cronometro' count-up)
+  const [timerMode, setTimerMode] = useState<'temporizador' | 'cronometro'>(() => {
+    try {
+      const saved = localStorage.getItem('oratoriapro_timer_mode');
+      return (saved as 'temporizador' | 'cronometro') || 'temporizador';
+    } catch {
+      return 'temporizador';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('oratoriapro_timer_mode', timerMode);
+    } catch {}
+  }, [timerMode]);
+
   // Modals
   const [isSoundModalOpen, setIsSoundModalOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -102,6 +118,15 @@ export default function App() {
     }
   });
 
+  const [isJwVerified, setIsJwVerified] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('oratoriapro_is_jw_verified');
+      return saved !== null ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+
   // Notification Toast
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
@@ -112,16 +137,24 @@ export default function App() {
     }, 4500);
   }, []);
 
-  // When user signs in, check if they already answered the JW affiliation question
+  // When user signs in, check if they already answered & verified the JW affiliation question
   useEffect(() => {
     if (!user) return;
     getUserProfile(user.uid)
       .then((profile) => {
         if (profile && typeof profile.isJehovahsWitness === 'boolean') {
+          const verified = Boolean(profile.isJwVerified);
           setIsJehovahsWitness(profile.isJehovahsWitness);
+          setIsJwVerified(verified);
           try {
             localStorage.setItem('oratoriapro_is_jw', JSON.stringify(profile.isJehovahsWitness));
+            localStorage.setItem('oratoriapro_is_jw_verified', JSON.stringify(verified));
           } catch {}
+          // If user had selected JW previously before strict verification was added, prompt verification
+          if (profile.isJehovahsWitness && !verified) {
+            setIsJwPromptFirstTime(true);
+            setIsJwModalOpen(true);
+          }
         } else {
           // If preference has not yet been set in profile or locally, open the prompt upon login!
           const localVal = localStorage.getItem('oratoriapro_is_jw');
@@ -134,24 +167,27 @@ export default function App() {
       .catch((err) => console.warn('Error reading user profile for JW preference:', err));
   }, [user]);
 
-  const handleSelectJwAffiliation = async (isJw: boolean) => {
+  const handleSelectJwAffiliation = async (isJw: boolean, verified: boolean) => {
+    const finalVerified = isJw && verified;
     setIsJehovahsWitness(isJw);
+    setIsJwVerified(finalVerified);
     try {
       localStorage.setItem('oratoriapro_is_jw', JSON.stringify(isJw));
+      localStorage.setItem('oratoriapro_is_jw_verified', JSON.stringify(finalVerified));
     } catch {}
 
     if (user) {
       try {
-        await updateUserJwStatus(user.uid, isJw);
+        await updateUserJwStatus(user.uid, isJw, finalVerified);
       } catch (err) {
         console.warn('Error updating JW preference in Firestore:', err);
       }
     }
 
-    if (isJw) {
-      showToast('Enfoque activado: Libro «Benefíciese de la Escuela del Ministerio Teocrático» (jw.org)', 'success');
+    if (isJw && finalVerified) {
+      showToast('Verificación completada: Guía de 53 aspectos («Benefíciese») con protección de copyright jw.org', 'success');
     } else {
-      showToast('Enfoque activado: Técnicas universales de oratoria contemporánea y Toastmasters', 'info');
+      showToast('Enfoque activado: Técnicas universales de oratoria contemporánea y fuentes de la red', 'info');
     }
   };
 
@@ -775,7 +811,8 @@ export default function App() {
           audioBase64,
           audioMimeType: mimeType,
           userNotes: '',
-          isJehovahsWitness: isJehovahsWitness ?? false,
+          isJehovahsWitness: Boolean(isJehovahsWitness && isJwVerified),
+          isJwVerified: Boolean(isJehovahsWitness && isJwVerified),
         }),
       });
 
@@ -1020,6 +1057,8 @@ export default function App() {
               onFinishRehearsal={handleFinishRehearsal}
               onOpenSoundModal={() => setIsSoundModalOpen(true)}
               isRecording={isRecording}
+              timerMode={timerMode}
+              onTimerModeChange={setTimerMode}
             />
 
             {isRecording && (
@@ -1040,6 +1079,8 @@ export default function App() {
               status={status}
               progressPercent={progressPercent}
               onAddSeconds={addSeconds}
+              timerMode={timerMode}
+              onTimerModeChange={setTimerMode}
             />
 
             <div className="w-full mt-6">
@@ -1171,6 +1212,8 @@ export default function App() {
                       progressPercent={progressPercent}
                       onAddSeconds={addSeconds}
                       isCompact={atrilTimerMode === 'compact'}
+                      timerMode={timerMode}
+                      onTimerModeChange={setTimerMode}
                     />
 
                     <div className="mt-3">
@@ -1258,6 +1301,8 @@ export default function App() {
                 onOpenSoundModal={() => setIsSoundModalOpen(true)}
                 isRecording={isRecording}
                 onDockToSide={() => setAtrilTimerMode('standard')}
+                timerMode={timerMode}
+                onTimerModeChange={setTimerMode}
               />
             )}
           </div>
@@ -1331,6 +1376,7 @@ export default function App() {
         isOpen={isJwModalOpen}
         onClose={() => setIsJwModalOpen(false)}
         currentValue={isJehovahsWitness}
+        isVerified={isJwVerified}
         onSelectAffiliation={handleSelectJwAffiliation}
         isFirstTimePrompt={isJwPromptFirstTime}
       />
